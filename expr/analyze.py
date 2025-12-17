@@ -89,7 +89,9 @@ for t in args.traces:
     print(miss, add, evict)
 
     misses = set()
-    metadata = set()
+    # create 16384 independent dicts (avoid using [{}] * n which reuses the same dict)
+    metadata = [dict() for _ in range(16384)]
+    i = 0
     counters = {cause:0 for cause in miss_cause}
     for l in logs:
         match l:
@@ -101,9 +103,11 @@ for t in args.traces:
                     continue  # categorized as first_access
                 
             case add_log():
-                metadata.add((l.trigger,l.target))
-                pass
+                metadata[l.trigger & 0x3FFF][l.trigger] = l.target
+                if len(metadata[l.trigger & 0x3FFF].keys()) > 12:
+                    print(list(metadata[l.trigger & 0x3FFF].keys()))
+                    assert False
             case evict_log():
-                metadata.remove((l.trigger,l.target))
-                pass
+                del metadata[l.trigger & 0x3FFF][l.trigger]
+            
     print(counters)

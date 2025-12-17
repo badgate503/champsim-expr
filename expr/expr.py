@@ -11,7 +11,7 @@ import random
 import subprocess
 
 WARM_UP = 0
-INTERVAL = 250000000
+INTERVAL = 250_000_000
 TRACE_PATH =  "../../champtraces/"
 parser = argparse.ArgumentParser()
 
