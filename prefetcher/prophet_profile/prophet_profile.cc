@@ -221,7 +221,7 @@ void prophet_profile::outPrefetcherPGOInfo(){
 }
 
 
-uint32_t prophet_profile::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type, uint32_t metadata_in)
+uint32_t prophet_profile::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type, uint32_t metadata_in, std::string latepf )
 {
     
     if(!cache_hit) { // L2 CACHE MISS
@@ -231,8 +231,9 @@ uint32_t prophet_profile::prefetcher_cache_operate(champsim::address addr, champ
             uint64_t last_addr = get_last(ip.to<uint64_t>());
             std::set<uint64_t> triggers = get_triggers(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
             
-            std::ostringstream oss;
-            oss<<std::dec<<parent->current_cycle()<< " MISS "<<std::hex<<pf_addr<<" "<<ip<<" "<<last_addr;
+            std::ostringstream oss;         
+            oss<<std::dec<<parent->current_cycle()<< " MISS "<<latepf<<" "<<std::hex<<pf_addr<<" "<<ip<<" "<<last_addr;
+
             for(uint64_t t:triggers) {
                 oss << " " << t;
             }
@@ -266,6 +267,7 @@ uint32_t prophet_profile::prefetcher_cache_fill(champsim::address addr, long set
 
 void prophet_profile::prefetcher_final_stats() {
     std::ofstream ofs(out_file);
+    std::cout <<"hi!"<<logs.size()<<std::endl;
     for(std::string s : logs) {
         ofs << s << "\n";
     }
@@ -292,8 +294,9 @@ bool ProphetMetaTable::insert(uint64_t key, const ProphetMetaTableEntry &data, u
         std::ostringstream oss1;
         std::string reason;
         std::cout << "hola" << std::endl;
-        if (victim_entry.key != key) {
-            reverse_metatable[victim_entry.data.correlatedAddr].erase(victim_entry.key);
+        reverse_metatable[victim_entry.data.correlatedAddr].erase(victim_entry.key);
+        
+        if (victim_entry.tag != tag) {
             reason = "CAPACITY";
         } else {
             reason = "CONFLICT";

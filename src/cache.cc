@@ -266,7 +266,7 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
 bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
 {
   cpu = handle_pkt.cpu;
-
+  
   // access cache
   auto [set_begin, set_end] = get_available_set_span(handle_pkt.address);
   auto way = std::find_if(set_begin, set_end, [matcher = matches_address(handle_pkt.address)](const auto& x) { return x.valid && matcher(x); });
@@ -280,8 +280,40 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   }
 
   auto metadata_thru = handle_pkt.pf_metadata;
+  // detect whether this access (miss) was already prefetched (present in MSHR/PQ/internal_PQ)
+
+
+  std::string was_prefetched = "NO";
+  if(!hit && handle_pkt.type != access_type::PREFETCH) {
+    auto matcher = matches_address(handle_pkt.address);
+    // check MSHR
+    auto mshr_entry = std::find_if(std::begin(MSHR), std::end(MSHR), matcher);
+    if (mshr_entry != MSHR.end()) {
+      if (mshr_entry->type == access_type::PREFETCH ) {
+        // Mark the prefetch as LATE
+        if (mshr_entry->prefetch_from_this) {
+          was_prefetched = "MSHR";
+        }
+      }
+    }
+    // check downstream PQ
+    if (was_prefetched == "NO" && lower_level != nullptr) {
+      if (std::find_if(std::begin(lower_level->PQ), std::end(lower_level->PQ), matcher) != lower_level->PQ.end()) {
+        was_prefetched = "L3PQ";
+      }
+    }
+    // check internal prefetch queue
+    if (was_prefetched == "NO") {
+      if (std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matcher) != internal_PQ.end()) {
+        was_prefetched = "L2PQ";
+      }
+    }
+  }
+  
+  
+
   if (should_activate_prefetcher(handle_pkt)) {
-    metadata_thru = impl_prefetcher_cache_operate(module_address(handle_pkt), handle_pkt.ip, hit, useful_prefetch, handle_pkt.type, metadata_thru);
+    metadata_thru = impl_prefetcher_cache_operate(module_address(handle_pkt), handle_pkt.ip, hit, useful_prefetch, handle_pkt.type, metadata_thru, was_prefetched);
   }
 
   // update replacement policy
@@ -335,6 +367,7 @@ auto CACHE::mshr_and_forward_packet(const tag_lookup_type& handle_pkt) -> std::p
 
 bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
 {
+  bool is_late = false;
   if constexpr (champsim::debug_print) {
     fmt::print("[{}] {} instr_id: {} address: {} v_address: {} type: {} local_prefetch: {} cycle: {}\n", NAME, __func__, handle_pkt.instr_id,
                handle_pkt.address, handle_pkt.v_address, access_type_names.at(champsim::to_underlying(handle_pkt.type)), handle_pkt.prefetch_from_this,
@@ -356,7 +389,9 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
     if (mshr_entry->type == access_type::PREFETCH && handle_pkt.type != access_type::PREFETCH) {
       // Mark the prefetch as LATE
       if (mshr_entry->prefetch_from_this) {
-        ++sim_stats.pf_late; // 
+
+        ++sim_stats.pf_late; //  MSHR  
+        is_late = true;
       }
     }
 
@@ -381,6 +416,16 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
       MSHR.emplace_back(std::move(mshr_pkt.first));
     }
   }
+
+
+  // ********** check pq (new)
+  // auto pq_entry = std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matches_address(handle_pkt.address));
+  // if (handle_pkt.type != access_type::PREFETCH && pq_entry != internal_PQ.end()) // miss already inflight
+  // {
+  //     ++sim_stats.pf_late;
+  //     is_late = true;
+  // }
+  // ********** check pq (new)
 
   sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
 
@@ -811,9 +856,9 @@ std::vector<double> CACHE::get_pq_occupancy_ratio() const { return ::occupancy_r
 void CACHE::impl_prefetcher_initialize() const { pref_module_pimpl->impl_prefetcher_initialize(); }
 
 uint32_t CACHE::impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
-                                              uint32_t metadata_in) const
+                                              uint32_t metadata_in, std::string latepf) const
 {
-  return pref_module_pimpl->impl_prefetcher_cache_operate(addr, ip, cache_hit, useful_prefetch, type, metadata_in);
+  return pref_module_pimpl->impl_prefetcher_cache_operate(addr, ip, cache_hit, useful_prefetch, type, metadata_in, latepf);
 }
 
 uint32_t CACHE::impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,

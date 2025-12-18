@@ -17,17 +17,21 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("--compile", "-c", action="store_true", help="do compile champsim")
 parser.add_argument("--traces", "-t", nargs="+")
+parser.add_argument("--interval", "-i")
+
 
 args = parser.parse_args()
-
+if args.interval != None:
+    INTERVAL = int(args.interval)
 all_trace_list = []
 
 for root, dirs, files in os.walk(TRACE_PATH):
     for f in files:
         if f.endswith(".xz") or f.endswith(".gz"):
-            if f.replace('.champsimtrace.xz',"").replace('.champsimtrace.gz',"") in args.traces:
-                p = os.path.join(root, f)
-                all_trace_list.append(p)
+            if args.traces != None:
+                if f.replace('.champsimtrace.xz',"").replace('.champsimtrace.gz',"") in args.traces:
+                    p = os.path.join(root, f)
+                    all_trace_list.append(p)
 
 
 if args.compile:
