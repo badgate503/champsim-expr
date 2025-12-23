@@ -8,7 +8,10 @@ bin/
 
 **/*.o
 **/*.d
-
+expr/log/*.log
+expr/log/*.txt
+expr/result/*.txt
+expr/result_old/*.txt
 test/000-test-main
 
 tracer/pin/obj-intel64/

@@ -106,7 +106,7 @@ CACHE::tag_lookup_type::tag_lookup_type(const request_type& req, bool local_pref
 
 CACHE::mshr_type::mshr_type(const tag_lookup_type& req, champsim::chrono::clock::time_point _time_enqueued)
     : address(req.address), v_address(req.v_address), ip(req.ip), instr_id(req.instr_id), cpu(req.cpu), type(req.type),
-      prefetch_from_this(req.prefetch_from_this), time_enqueued(_time_enqueued), instr_depend_on_me(req.instr_depend_on_me), to_return(req.to_return)
+      prefetch_from_this(req.prefetch_from_this), prefetch_related(false), time_enqueued(_time_enqueued), instr_depend_on_me(req.instr_depend_on_me), to_return(req.to_return)
 {
 }
 
@@ -120,8 +120,10 @@ CACHE::mshr_type CACHE::mshr_type::merge(mshr_type predecessor, mshr_type succes
   std::set_union(std::begin(predecessor.to_return), std::end(predecessor.to_return), std::begin(successor.to_return), std::end(successor.to_return),
                  std::back_inserter(merged_return));
 
+
   mshr_type retval{(successor.type == access_type::PREFETCH) ? predecessor : successor};
 
+  retval.prefetch_related = predecessor.prefetch_related || successor.prefetch_related;
   // set the time enqueued to the predecessor unless its a demand into prefetch, in which case we use the successor
   retval.time_enqueued =
       ((successor.type != access_type::PREFETCH && predecessor.type == access_type::PREFETCH)) ? successor.time_enqueued : predecessor.time_enqueued;
@@ -289,11 +291,10 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
     // check MSHR
     auto mshr_entry = std::find_if(std::begin(MSHR), std::end(MSHR), matcher);
     if (mshr_entry != MSHR.end()) {
-      if (mshr_entry->type == access_type::PREFETCH ) {
+      if (mshr_entry->type == access_type::PREFETCH  || mshr_entry->prefetch_related) {
         // Mark the prefetch as LATE
-        if (mshr_entry->prefetch_from_this) {
           was_prefetched = "MSHR";
-        }
+        
       }
     }
     // check downstream PQ
@@ -375,6 +376,10 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
   }
 
   mshr_type to_allocate{handle_pkt, current_time};
+
+  if(handle_pkt.type == access_type::PREFETCH) {
+    to_allocate.prefetch_related = true;
+  } 
 
   cpu = handle_pkt.cpu;
 
@@ -639,6 +644,7 @@ bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint3
   ++sim_stats.pf_requested;
 
   if (std::size(internal_PQ) >= PQ_SIZE) {
+    ++sim_stats.pf_dropped;
     return false;
   }
 
@@ -934,6 +940,7 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.mshr_return = sim_stats.mshr_return;
 
   roi_stats.pf_requested = sim_stats.pf_requested;
+  roi_stats.pf_dropped = sim_stats.pf_dropped;
   roi_stats.pf_issued = sim_stats.pf_issued;
   roi_stats.pf_useful = sim_stats.pf_useful;
   roi_stats.pf_useless = sim_stats.pf_useless;

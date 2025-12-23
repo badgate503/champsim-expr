@@ -130,7 +130,18 @@ void prophet_profile::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cach
             if (!matched)
             {
                 uint64_t victimAddr = lastMeta->correlatedAddr;
-                lastMeta->correlatedAddr = block_addr;
+                //lastMeta->correlatedAddr = block_addr;   // change silently
+                ProphetMetaTableEntry temp_entry(block_addr);
+                metaTable->insert(lastAddr, temp_entry, 1);
+
+                
+                // std::ostringstream oss1;
+                // oss1<<std::dec<<parent->current_cycle()<< " ADD "<<std::hex<<lastAddr<<" "<<block_addr;
+                // std::ostringstream oss2;
+                // oss2<<std::dec<<parent->current_cycle()<< " EVICT CONFLICT "<<std::hex<<lastAddr<<" "<<victimAddr;
+                // logs.push_back(oss1.str());
+                // logs.push_back(oss2.str());
+
 
                 // victim buffer logic
                 if (profileReplTable[ip] > 1)
@@ -148,8 +159,10 @@ void prophet_profile::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cach
                                 victimMeta->counter++;
                             }
                         }else{
-                            victimMeta->correlatedAddr = victimAddr;
-                            victimMeta->counter = 0;
+
+                            ProphetMRBTableEntry temp_entry(victimAddr);
+                            mrbTable->insert(lastAddr, temp_entry);
+                            //victimMeta->counter = 0;
                         }
                     }
                 }
@@ -184,12 +197,16 @@ int prophet_profile::issue_metatable(ProphetMetaTable *metaTable, uint64_t looku
             break;
         addToUsedPool(lookup);
         if (candidate->correlatedAddr != 0){
-            lookup = candidate->correlatedAddr;
+            
             if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE))
             {
                 addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
+                std::ostringstream oss;         
+                oss<<std::dec<<parent->current_cycle()<< " ISSUE MT "<< std::hex<<pc<<" "<< (lookup)<<" " << (candidate->correlatedAddr);
+                logs.push_back(oss.str());    
                 issued++;
             }
+            lookup = candidate->correlatedAddr;
         }
     }
     return issued;
@@ -197,6 +214,7 @@ int prophet_profile::issue_metatable(ProphetMetaTable *metaTable, uint64_t looku
 
 int prophet_profile::issue_mrbtable(ProphetMRBTable *mrbTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t> &addresses)
 {
+    std::cout <<"deprecated,Should not issue" <<std::endl;
     int issued = 0;
     for (int i = 0; i < globalDegree; i++)
     {
@@ -208,6 +226,9 @@ int prophet_profile::issue_mrbtable(ProphetMRBTable *mrbTable, uint64_t lookup, 
             lookup = candidate->correlatedAddr;
             if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE))
             {
+                std::ostringstream oss;         
+                oss<<std::dec<<parent->current_cycle()<< " ISSUE MRB "<< std::hex<<pc<<" "<< (lookup)<<" " << (candidate->correlatedAddr);
+                logs.push_back(oss.str());    
                 addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
                 issued++;
             }
@@ -241,6 +262,23 @@ uint32_t prophet_profile::prefetcher_cache_operate(champsim::address addr, champ
 
             //ofs.close();
         }
+    } else {
+         if(ip.to<uint64_t>() != 0) {
+            champsim::block_number pf_addr{addr};
+            //std::ofstream ofs(out_file, std::ios::app);  // append mode
+            uint64_t last_addr = get_last(ip.to<uint64_t>());
+            std::set<uint64_t> triggers = get_triggers(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
+            
+            std::ostringstream oss;         
+            oss<<std::dec<<parent->current_cycle()<< " HIT "<<std::hex<<pf_addr<<" "<<ip<<" "<<last_addr;
+
+            for(uint64_t t:triggers) {
+                oss << " " << t;
+            }
+            logs.push_back(oss.str());
+
+            //ofs.close();
+        }
     }
 
 
@@ -252,7 +290,7 @@ uint32_t prophet_profile::prefetcher_cache_operate(champsim::address addr, champ
 
     for (int i = 0; i<prefetch_candidate.size(); i++) {
       uint64_t p_addr = prefetch_candidate[i];
-        
+      
       if (p_addr == 0) break;
       champsim::address prefetch_addr{p_addr};
       const bool success = prefetch_line(prefetch_addr, true, 0);
@@ -280,20 +318,18 @@ bool ProphetMetaTable::insert(uint64_t key, const ProphetMetaTableEntry &data, u
 {
     reverse_metatable[data.correlatedAddr].insert(key);
 
-    std::ostringstream oss;
-    oss<<std::dec<<pp->parent->current_cycle()<< " ADD "<<std::hex<<key<<" "<<data.correlatedAddr;
-    pp->logs.push_back(oss.str());
-
+    
     Entry victim_entry = Super::insert(key, data);
     Super::set_mru(key);
     uint64_t index = key % this->num_sets;
     uint64_t tag = key / this->num_sets;
     int way = this->cams[index][tag];
     priority_pgo[index][way] = priority;
+    bool ret = false;
     if(victim_entry.valid) {
         std::ostringstream oss1;
         std::string reason;
-        std::cout << "hola" << std::endl;
+        //std::cout << "hola" << std::endl;
         reverse_metatable[victim_entry.data.correlatedAddr].erase(victim_entry.key);
         
         if (victim_entry.tag != tag) {
@@ -303,12 +339,16 @@ bool ProphetMetaTable::insert(uint64_t key, const ProphetMetaTableEntry &data, u
         }
         oss1<<std::dec<<pp->parent->current_cycle()<< " EVICT "<<reason<<" "<<std::hex<<victim_entry.key<<" "<<victim_entry.data.correlatedAddr;
         pp->logs.push_back(oss1.str());
-        return true;
+        
+        ret = true;
     }
-
+    std::ostringstream oss;
+    oss<<std::dec<<pp->parent->current_cycle()<< " ADD "<<std::hex<<key<<" "<<data.correlatedAddr;
+    //pp->logs.push_back(oss.str());
+    pp->logs.push_back(oss.str());
     
         
-    return false;
+    return ret;
 }
 
 // } // namespace prefetch

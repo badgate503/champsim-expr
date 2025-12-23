@@ -1,2 +1,0 @@
-base-all: vberti triage triangel prophet croage
-stride-all: stride_vberti stride_triage stride_triangel stride_prophet stride_croage

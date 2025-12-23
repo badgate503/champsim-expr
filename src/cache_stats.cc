@@ -4,6 +4,7 @@ cache_stats operator-(cache_stats lhs, cache_stats rhs)
 {
   cache_stats result;
   result.pf_requested = lhs.pf_requested - rhs.pf_requested;
+  result.pf_dropped = lhs.pf_dropped - rhs.pf_dropped;
   result.pf_issued = lhs.pf_issued - rhs.pf_issued;
   result.pf_useful = lhs.pf_useful - rhs.pf_useful;
   result.pf_useless = lhs.pf_useless - rhs.pf_useless;

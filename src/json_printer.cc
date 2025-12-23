@@ -48,6 +48,7 @@ void to_json(nlohmann::json& j, const CACHE::stats_type& stats)
 
   std::map<std::string, nlohmann::json> statsmap;
   statsmap.emplace("prefetch requested", stats.pf_requested);
+  statsmap.emplace("prefetch dropped", stats.pf_dropped);
   statsmap.emplace("prefetch issued", stats.pf_issued);
   statsmap.emplace("useful prefetch", stats.pf_useful);
   statsmap.emplace("useless prefetch", stats.pf_useless);
