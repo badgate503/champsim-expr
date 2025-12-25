@@ -10,8 +10,8 @@ bin/
 **/*.d
 
 expr/log/
-expr/result/*.txt
-expr/result_old/*.txt
+expr/result/
+expr/result_old/
 test/000-test-main
 
 tracer/pin/obj-intel64/
