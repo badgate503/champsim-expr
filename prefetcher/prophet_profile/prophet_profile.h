@@ -329,7 +329,7 @@ public:
                                     ? file_part.substr(0, last_dot)
                                     : file_part.substr(0, second_last_dot);
 
-        std::string profile_path = "/mnt/data/lyq/Kairos2/expr/log/"+ base_name + ".txt";
+        std::string profile_path = "/mnt/data/lyq/Kairos2/expr/log/baseline/"+ base_name + ".txt";
         return profile_path;
 
     }
