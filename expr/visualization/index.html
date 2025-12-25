@@ -25,8 +25,19 @@
     <div style="width:100%;max-width:100%;display:block;">
         <canvas id="barChart" height="800" style="width:100%"></canvas>
     </div>
-    
 
+    <div id="Chart2" style="width:100%;max-width:100%;display:block;">
+         <h2 style="text-align:center;">各 Trace IPC</h2>
+    <canvas id="ipcChart" height="600" style="width:100%"></canvas>
+    </div>
+    
+    <div style="width:100%; text-align:center; margin-bottom:20px;">
+    <img
+        src="../result/ipc_all.png"
+        alt="IPC Speedup"
+        style="max-width:100%; height:auto; border:1px solid #ddd;"
+    >
+</div>
     
     <div hidden id="fileList"></div>
     <div hidden><canvas hidden id="pieChart" width="600" height="400"></canvas></div>
@@ -34,6 +45,25 @@
         <div id="flowTitle" style="font-size:20px;font-weight:bold;margin-bottom:10px;">Miss 原因分类</div>
         <canvas id="flowCanvas" width="1400" height="700" style="width:90vw;max-width:1200px;height:700px;border:1px solid #ccc;background:#fff;"></canvas>
         <script>
+            async function fetchIPC() {
+    const resp = await fetch('../result/baseline/ipc.txt');
+    const text = await resp.text();
+
+    const labels = [];
+    const data = [];
+
+    text.split(/\r?\n/).forEach(line => {
+        if (!line.includes(':')) return;
+        const [name, val] = line.split(':', 2);
+        const ipc = parseFloat(val.trim());
+        if (!isNaN(ipc)) {
+            labels.push(name.trim());
+            data.push(ipc);
+        }
+    });
+
+    return { labels, data };
+}
         // stack bar 颜色映射
         const reasonColors = {
             'TARGET_FIRST_APPEAR': '#FF6384',
@@ -210,6 +240,7 @@
             const resp = await fetch(`/result_data?file=${encodeURIComponent(filename)}`);
             return await resp.text();
         }
+        
         function parseResultData(text) {
             // 解析每行: "KEY VALUE"
             const lines = text.trim().split(/\r?\n/);
@@ -253,6 +284,7 @@
             return await resp.text();
         }
 
+
         function parseTracelist(text) {
             // 返回 {setName: [trace, ...], ...}
             const sets = {};
@@ -285,6 +317,8 @@
                 cb.onchange = function() {
                     selectedSets = Array.from(box.querySelectorAll('input[type=checkbox]:checked')).map(c=>c.value);
                     if (window.lastBarFiles) renderBarChart(window.lastBarFiles, true);
+                    renderIPCBarChartWithSets(true);
+                    
                 };
                 const label = document.createElement('label');
                 label.htmlFor = id;
@@ -476,10 +510,161 @@
                         const { labels, data } = parseResultData(text);
                         renderPieChart(labels, data, t);
                     });
+                    highlightIPCBar(t);
                 }
+                
             };
             window.lastBarFiles = files;
         }
+        function highlightIPCBar(traceName) {
+            if (!window.ipcChartObj) return;
+            const chart = window.ipcChartObj;
+            const idx = chart.data.labels.findIndex(t => t === traceName);
+            if (idx < 0) return;
+
+            // 恢复默认颜色
+            chart.data.datasets[0].backgroundColor = chart.data.labels.map(() => '#42A5F5');
+            // 高亮对应柱子
+            chart.data.datasets[0].backgroundColor[idx] = '#FF5722';
+            chart.update();
+        }
+        async function renderIPCBarChartWithSets(isFilterChange = false) {
+            
+    // 1. 读取 IPC 数据
+    const { labels: allTraces, data: allIPC } = await fetchIPC();
+    if (!allTraces.length) return;
+
+    // 2. 缓存原始 IPC
+    if (!window.lastIPCData || !isFilterChange) {
+        window.lastIPCData = { traces: allTraces, ipc: allIPC };
+    }
+
+    const traces = window.lastIPCData.traces;
+    const ipc = window.lastIPCData.ipc;
+
+    // 3. 读取 tracelist
+    const tracelistText = await fetchTracelist();
+    const sets = parseTracelist(tracelistText);
+
+    // 4. 构建 trace -> set 映射
+    const trace2set = {};
+    Object.entries(sets).forEach(([set, arr]) => arr.forEach(t => trace2set[t] = set));
+
+    // 5. 获取选中 set
+    const filterSet = selectedSets && selectedSets.length ? selectedSets : Object.keys(sets);
+
+    // 6. 对每个 set 顺序 flatten traces
+    const grouped = [];
+    filterSet.forEach(setName => {
+        const tracesInSet = sets[setName].filter(t => {
+            const idx = traces.indexOf(t);
+            return idx >= 0; // ipc.txt 中有该 trace
+        });
+        if (tracesInSet.length) grouped.push({ set: setName, traces: tracesInSet });
+    });
+
+    // 7. 按 grouped 顺序生成最终 X 轴和 IPC 数据
+    const orderedTraces = [];
+    const orderedIPC = [];
+    grouped.forEach(g => {
+        g.traces.forEach(t => {
+            const idx = traces.indexOf(t);
+            if (idx >= 0) {
+                orderedTraces.push(t);
+                orderedIPC.push(ipc[idx]);
+            }
+        });
+    });
+
+    if (orderedTraces.length === 0) return;
+
+    // 8. 计算分隔线和 set 标签
+    const separators = [];
+    const setLabels = [];
+    let acc = 0;
+    grouped.forEach(g => {
+        if (acc > 0) separators.push(acc - 0.5);
+        setLabels.push({ name: g.set, pos: acc + g.traces.length / 2 });
+        acc += g.traces.length;
+    });
+
+    // 9. 重建 canvas
+    if (window.ipcChartObj) window.ipcChartObj.destroy();
+    const oldCanvas = document.getElementById('ipcChart');
+    if (oldCanvas) {
+        const parent = oldCanvas.parentNode;
+        parent.removeChild(oldCanvas);
+        const newCanvas = document.createElement('canvas');
+        newCanvas.id = 'ipcChart';
+        newCanvas.height = 600;
+        newCanvas.style.width = '100%';
+        parent.appendChild(newCanvas);
+    }
+    const ctx = document.getElementById('ipcChart').getContext('2d');
+
+    // 10. 绘制 Chart
+    window.ipcChartObj = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: orderedTraces,
+            datasets: [{
+                label: 'IPC',
+                data: orderedIPC,
+                backgroundColor: '#42A5F5'
+            }]
+        },
+        options: {
+            responsive: false,
+            plugins: {
+                legend: { display: false },
+                title: { display: true, text: 'IPC per Trace' }
+            },
+            scales: {
+                x: { 
+                    stacked: false,
+                    ticks: {
+                        autoSkip: false,
+                        maxRotation: 90,
+                        minRotation: 60
+                    }
+                },
+                y: {
+                    beginAtZero: false,
+                    min: 0.8,
+                    title: { display: true, text: 'IPC' }
+                }
+            }
+        },
+        plugins: [{
+            id: 'setLabelAndSeparatorPlugin',
+            afterDraw: chart => {
+                const { ctx, chartArea, scales } = chart;
+                ctx.save();
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#333';
+
+                setLabels.forEach(({ name, pos }) => {
+                    const x = scales.x.getPixelForValue(pos - 0.5);
+                    ctx.fillText(name, x, chartArea.bottom - 350);
+                });
+
+                ctx.strokeStyle = '#888';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 6]);
+                separators.forEach(v => {
+                    const x = scales.x.getPixelForValue(v);
+                    ctx.beginPath();
+                    ctx.moveTo(x, chartArea.top);
+                    ctx.lineTo(x, chartArea.bottom);
+                    ctx.stroke();
+                });
+                ctx.setLineDash([]);
+                ctx.restore();
+            }
+        }]
+    });
+}
         async function main() {
             const fileListDiv = document.getElementById('fileList');
             const files = await fetchResultFiles();
@@ -488,6 +673,7 @@
             if (files.length > 0) renderBarChart(files);
             // 初始加载流程图
             refreshFlowGraph();
+            renderIPCBarChartWithSets();
         }
         async function loadFile(filename) {
             const text = await fetchResultData(filename);
@@ -497,6 +683,7 @@
             renderPieChart(labels, data, traceName);
             // 切换流程图
             refreshFlowGraph(traceName);
+            
         }
         main();
     </script>

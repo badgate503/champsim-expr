@@ -26,7 +26,8 @@ INTERVAL = 250000000
 LOG_PATH="./log/"
 parser = argparse.ArgumentParser()
 parser.add_argument("--traces", "-t", nargs="+")
-parser.add_argument("--print", "-p", action="store_true")
+parser.add_argument("--print", "-a", action="store_true")
+parser.add_argument("--prefetcher", "-p")
 args = parser.parse_args()
 
 from enum import Enum
@@ -99,17 +100,19 @@ class hit_log:
 
 import glob
 already_analyzed = []
-for result in glob.glob(os.path.join("./result","*_breif.txt")):
+for result in glob.glob(os.path.join(f"./result/{args.prefetcher}",f"*_breif.txt")):
     t = os.path.splitext(os.path.basename(result))[0]
-    already_analyzed.append(t.replace("_breif",""))
+    already_analyzed.append(t.replace(f"_breif",""))
 
 
 
 
 
-for log_file in glob.glob(os.path.join(LOG_PATH, '*.txt')):
+for log_file in glob.glob(os.path.join(LOG_PATH+args.prefetcher, '*.txt')):
     
     t = os.path.splitext(os.path.basename(log_file))[0]
+    if not args.traces:
+        args.traces = []
     if t in already_analyzed and t not in args.traces:
         print(f"\n> Skipping {CYAN}{t}{END}")
         continue
@@ -243,11 +246,11 @@ for log_file in glob.glob(os.path.join(LOG_PATH, '*.txt')):
 
 
     if args.print:
-        with open(f"./result/{t}_full.txt", "w") as f:
+        with open(f"./result/{args.prefetcher}/{t}_full.txt", "w") as f:
             for l in logs:
                 f.write(l.__str__())
                 f.write("\n")
-    with open(f"./result/{t}_breif.txt", "w") as f:
+    with open(f"./result/{args.prefetcher}/{t}_breif.txt", "w") as f:
         for k,v in counters.items():
             f.write(f"{k} {v}\n")
     print(f"\n{CYAN}{t}{END}: Done.")

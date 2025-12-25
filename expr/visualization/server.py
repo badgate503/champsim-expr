@@ -5,7 +5,9 @@ import json
 from urllib.parse import urlparse, parse_qs, unquote
 
 PORT = 8000
-RESULT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../result'))
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+RESULT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), f'../result/baseline'))
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -40,12 +42,31 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             else:
                 self.send_response(404)
                 self.end_headers()
+        elif self.path.startswith('/result/'):
+            file_path = os.path.join(BASE_DIR, self.path.lstrip('/'))
+            if os.path.isfile(file_path):
+                self.send_response(200)
+                # 简单根据后缀设置 MIME
+                if file_path.endswith('.txt'):
+                    ctype = 'text/plain; charset=utf-8'
+                elif file_path.endswith('.png'):
+                    ctype = 'image/png'
+                else:
+                    ctype = 'application/octet-stream'
+                self.send_header('Content-Type', ctype)
+                self.end_headers()
+                with open(file_path, 'rb') as f:
+                    self.wfile.write(f.read())
+                return
+            else:
+                self.send_response(404)
+                self.end_headers()
         else:
             # Serve static files (index.html, etc.)
             if self.path == '/':
                 self.path = '/index.html'
             return http.server.SimpleHTTPRequestHandler.do_GET(self)
-
+        
 if __name__ == '__main__':
     os.chdir(os.path.dirname(__file__))
     with socketserver.TCPServer(("", PORT), Handler) as httpd:

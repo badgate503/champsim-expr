@@ -26,6 +26,7 @@ TRACE_PATH =  "../../champtraces/"
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--compile", "-c", action="store_true", help="do compile champsim")
+parser.add_argument("--prefetcher", "-p")
 parser.add_argument("--traces", "-t", nargs="+")
 parser.add_argument("--interval", "-i")
 parser.add_argument("--tracelist", "-l", nargs="*", type=str, help="specify tracelist lines to use")
@@ -83,9 +84,9 @@ if args.compile:
     with open("../champsim_config.json", "r", encoding="utf-8") as f:
         data = json.load(f)
         data["L1D"]["prefetcher"] = "no"
-        data["L2C"]["prefetcher"] = "prophet_profile"
+        data["L2C"]["prefetcher"] = args.prefetcher
         data["LLC"]["prefetcher"] = "no"
-        data["executable_name"] = f"champsim.expr"
+        data["executable_name"] = f"champsim.{args.prefetcher}"
     with open("../champsim_config.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
     os.system("cd .. && ./config.sh champsim_config.json && make -j32")
@@ -96,8 +97,10 @@ pending_tasks = list(all_trace_list)
 processes = []  # (process, w, start_time)
 
 def launch_task(w, path):
-    work = [f"../bin/champsim.expr", "--warmup-instructions", f"{WARM_UP}", "--simulation-instructions", f"{INTERVAL}", path]
-    with open(f"{LOG_BASE}/{w}.log", "w") as f:
+
+    work = [f"../bin/champsim.{args.prefetcher}", "--warmup-instructions", f"{WARM_UP}", "--simulation-instructions", f"{INTERVAL}", path]
+    name = f"{w}.log"
+    with open(f"{LOG_BASE}/{args.prefetcher}/{name}", "w") as f:
         f.write(" ".join(work))
         f.write("\n")
         process = subprocess.Popen(
