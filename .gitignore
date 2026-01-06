@@ -15,7 +15,7 @@ tracer/pin/obj-intel64/
 
 vcpkg_installed/
 vcpkg/
-expr/result/
+expr/result/data/
 
 **/_build
 **/_doxygen
