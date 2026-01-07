@@ -1,6 +1,6 @@
-#include "triangel_revised.h"
+#include "triangel.h"
 
-uint32_t triangel_revised::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
+uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
                                                     uint32_t metadata_in)
 {
   std::vector<uint64_t> prefetch_addresses;
@@ -84,11 +84,12 @@ uint32_t triangel_revised::prefetcher_cache_operate(champsim::address addr, cham
 
     /* Step3. Check History Sampler for the corresponding TU Entry */
     HistorySamplerEntry* HS_entry = HS->find(TU_entry->last_addr0);
-    if (HS_entry && HS_entry->tu_entry == TU_entry) {
+
+    if (HS_entry && HS_entry->tu_entry_key == TU_entry->key) {
       /* 若 T.timestamp 和 A.timestamp 相差小于一个时间窗口，则认为 CurPC 处指令访存重复特征显著，增大 T.reuseConf 和全局 reuseConf ，反之，减少局部和全局的
        * reuseConf */
-      int64_t time_distance = HS_entry->tu_entry->local_timestamp - HS_entry->timestamp;
-      if (time_distance > 0 && time_distance < 196608) { // magic nonsense number
+      int64_t time_distance = TU_entry->local_timestamp - HS_entry->timestamp;
+      if (time_distance > 0 && time_distance < 196608 * 2) { // magic nonsense number
         TU_entry->reuse_conf.increment();
         global_reuse_conf.increment();
       } else if (!HS_entry->reused) {
@@ -129,7 +130,7 @@ uint32_t triangel_revised::prefetcher_cache_operate(champsim::address addr, cham
       }
 
       /* 使用地址对 (PrevAddr, Addr) 更新 History Sampler 的采样 A ： A.Target = Addr */
-      if (HS_entry->tu_entry == TU_entry) {
+      if (HS_entry->tu_entry_key == TU_entry->key) {
         HS_entry->target_addr = line_addr;
       }
       HS_entry->confident = will_be_confident;
@@ -137,29 +138,35 @@ uint32_t triangel_revised::prefetcher_cache_operate(champsim::address addr, cham
     else if (should_sample || RandomChance(TU_entry->reuse_conf.value, TU_entry->sample_rate.value)) {
       /* 若未找到有效采样或采样来自另一个 PC 的地址流，则以随机概率 采样 CurPC 的地址对 (PrevAddr, Addr) */
       auto HS_entry = HS->get_victim(TU_entry->last_addr0);
-      if (HS_entry && HS_entry->tu_entry) {
-        uint64_t distance = HS_entry->tu_entry->local_timestamp - HS_entry->timestamp;
-        /* 若 V 的时间戳和 V 采样的 PC 对应的 Training Unit 表项的时间戳相差大于一个时间窗口，则说
-           明采样过于陈旧，因此增大 CurPC 的采样率： */
-        if (distance > 196608) {
-          TU->touch(HS_entry->tu_entry->key);
-          /* 若在此基础上 !V.Accessed ， 说明采样 V 过于陈旧且长时间没被使用；意味着
-             V.Train-Idx 的地址流长时间不会出现采样 V 记录的地址，因此降低 V.Train-Idx 的 reuseConf */
-          if (!HS_entry->reused) {
-            HS_entry->tu_entry->reuse_conf.decrement();
-            global_reuse_conf.decrement();
+      if (HS_entry) {
+        auto TU_entry_from_hs = TU->find(HS_entry->tu_entry_key);
+        if (TU_entry_from_hs) {
+          uint64_t distance = TU_entry_from_hs->local_timestamp - HS_entry->timestamp; // ! UAF
+          /* 若 V 的时间戳和 V 采样的 PC 对应的 Training Unit 表项的时间戳相差大于一个时间窗口，则说
+             明采样过于陈旧，因此增大 CurPC 的采样率： */
+          if (distance > 196608 * 2) {
+            TU->touch(TU_entry_from_hs->key);
+            /* 若在此基础上 !V.Accessed ， 说明采样 V 过于陈旧且长时间没被使用；意味着
+               V.Train-Idx 的地址流长时间不会出现采样 V 记录的地址，因此降低 V.Train-Idx 的 reuseConf */
+            if (!HS_entry->reused) {
+              TU_entry_from_hs->reuse_conf.decrement();
+              global_reuse_conf.decrement();
+            }
+            TU_entry->sample_rate.increment();
+          } else if (distance > 0 && !HS_entry->reused) {
+            /* 若时间戳相差小于一个时间窗口，且 !V.Accessed ，说明采样后还没来得及发现地址流中的重复地
+               址就被重新采样，因此需要降低 CurPC 的采样率。避免过于频繁的替换。*/
+            TU_entry->sample_rate.decrement();
           }
-          TU_entry->sample_rate.increment();
-        } else if (distance > 0 && !HS_entry->reused) {
-          /* 若时间戳相差小于一个时间窗口，且 !V.Accessed ，说明采样后还没来得及发现地址流中的重复地
-             址就被重新采样，因此需要降低 CurPC 的采样率。避免过于频繁的替换。*/
-          TU_entry->sample_rate.decrement();
+        } else {
+          // HS_entry 本来就是 victim,刚好被替换掉。
         }
+
       } else {
         TU_entry->sample_rate.increment();
       }
 
-      auto HS_new = HistorySamplerEntry(TU_entry->last_addr0, TU_entry, line_addr, TU_entry->local_timestamp + 1);
+      auto HS_new = HistorySamplerEntry(TU_entry->last_addr0, TU_entry->key, line_addr, TU_entry->local_timestamp + 1);
       HS->set(TU_entry->last_addr0, HS_new);
     }
   }
@@ -232,16 +239,19 @@ uint32_t triangel_revised::prefetcher_cache_operate(champsim::address addr, cham
   return metadata_in;
 }
 
-uint32_t triangel_revised::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr,
+uint32_t triangel::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr,
                                                  uint32_t metadata_in)
 {
-  cache_pf_map[addr.to<uint64_t>()] = prefetch ? true:false;
-  if(evicted_addr.to<uint64_t>() != 0) {
-    cache_pf_map.erase(evicted_addr.to<uint64_t>());
+  uint64_t line_addr = addr.to<uint64_t>() >> LOG2_BLOCK_SIZE;
+  uint64_t evaddr = evicted_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE;
+  cache_pf_map[line_addr] = prefetch ? true:false;
+  
+  if(evaddr != 0) {
+    cache_pf_map.erase(evaddr);
   }
   return metadata_in;
 }
 
-void triangel_revised::prefetcher_final_stats() {}
+void triangel::prefetcher_final_stats() {}
 
-void triangel_revised::prefetcher_cycle_operate() {}
+void triangel::prefetcher_cycle_operate() {}

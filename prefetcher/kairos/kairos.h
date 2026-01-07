@@ -11,7 +11,6 @@ using namespace std;
 #define DETECT_UNIT_SIZE 32
 #define TRAINING_UNIT_SIZE 16
 #define TRAINING_UNIT_WINDOW 256
-#define META_SET 4096
 #define META_WAY_MAX 8
 #define META_WAY_MIN 1
 #define META_WAY_INIT 4
@@ -28,65 +27,68 @@ void removeDuplicates(std::vector<T>& vec)
 
 uint64_t hash_xor(uint64_t key, uint64_t width);
 
-// Template for a pseudo-LRU cache
-// T: Type of data stored in the cache
-// S: Cache size (number of cache lines)
 template <typename T>
-class PseudoLRUCache
-{
+class PseudoLRUCache {
 public:
-  // static_assert((S & (S - 1)) == 0, "Cache size must be a power of 2");
-
   struct CacheLine {
-    CacheLine(uint64_t _tag = 0, const T& _data = T(), bool _valid = false) : tag(_tag), data(_data), valid(_valid) {}
-    uint64_t tag; // Tag for identifying cache lines
-    T data;       // Data stored in the cache line
+    uint64_t tag = 0;
+    T data{};
     bool valid = false;
   };
 
+  size_t ways;
   std::vector<CacheLine> cache;
-  std::vector<bool> tree; // Binary tree for PLRU tracking
+  std::vector<uint8_t> tree; // 0: left MRU, 1: right MRU
 
-  size_t getReplacementIndex()
-  {
-    size_t index = 0;
-    while (index < tree.size()) {
-      index = 2 * index + 1 + !tree[index];
-    }
-    return index - (tree.size() - 1);
+  explicit PseudoLRUCache(size_t size)
+      : ways(size), cache(size), tree(size - 1, 0) {
+    assert((size & (size - 1)) == 0);
   }
 
-  void updateTree(size_t index)
-  {
-    index += tree.size() - 1;
-    while (index > 0) {
-      size_t parent = (index - 1) / 2;
-      tree[parent] = (index % 2 == 0);
-      index = parent;
+  // 优先找 invalid line
+  size_t getReplacementIndex() {
+    for (size_t i = 0; i < ways; i++) {
+      if (!cache[i].valid)
+        return i;
+    }
+
+    size_t node = 0;
+    while (node < tree.size()) {
+      // 走 LRU 方向（MRU 的反方向）
+      bool mru_right = tree[node];
+      node = mru_right ? (2 * node + 1) : (2 * node + 2);
+    }
+
+    return node - (tree.size());
+  }
+
+  void updateTree(size_t way) {
+    size_t node = way + tree.size();
+    while (node > 0) {
+      size_t parent = (node - 1) / 2;
+      bool is_right = (node == 2 * parent + 2);
+      tree[parent] = is_right; // 标记访问方向为 MRU
+      node = parent;
     }
   }
 
-public:
-  PseudoLRUCache(uint64_t size) : cache(size), tree(size - 1, false) { assert((size & (size - 1)) == 0); }
-
-  CacheLine* find(uint64_t tag)
-  {
-    for (size_t i = 0; i < cache.size(); ++i) {
+  CacheLine* find(uint64_t tag) {
+    for (size_t i = 0; i < ways; i++) {
       if (cache[i].valid && cache[i].tag == tag) {
         updateTree(i);
-        return &cache[i]; // Cache hit
+        return &cache[i];
       }
     }
-    return nullptr; // Cache miss
+    return nullptr;
   }
 
-  void insert(uint64_t tag, const T& item)
-  {
-    size_t replacementIndex = getReplacementIndex();
-    cache[replacementIndex] = CacheLine(tag, item, true);
-    updateTree(replacementIndex);
+  void insert(uint64_t tag, const T& data) {
+    size_t idx = getReplacementIndex();
+    cache[idx] = CacheLine{tag, data, true};
+    updateTree(idx);
   }
 };
+
 
 struct DetectUnitEntry {
   DetectUnitEntry(uint64_t _ip_tag = 0, bool _key_ip = false, uint64_t _miss = 0) : ip_tag(_ip_tag), key_ip(_key_ip), miss_count(_miss) {}
@@ -196,7 +198,6 @@ public:
 
 // Template for a set-associative LFU cache
 // T: Type of data stored in the cache
-// S: Size of Cache (number of cache lines)
 template <typename T>
 class LFUCache
 {
@@ -269,7 +270,7 @@ class MetaDataTable
 public:
   size_t actual_set;
   size_t actual_way;
-  vector<LFUCache<MetaEntry>> data;
+  vector<LFUCache<MetaEntry>> table;
 
   // _actual_set : set number of the LLC
   ~MetaDataTable() { cout << "free MetaDataTable" << endl; }
@@ -277,13 +278,13 @@ public:
   {
     actual_set = _actual_set;
     actual_way = META_WAY_INIT;
-    data = std::vector<LFUCache<MetaEntry>>(actual_set, LFUCache<MetaEntry>(12 * actual_way));
+    table = std::vector<LFUCache<MetaEntry>>(actual_set, LFUCache<MetaEntry>(12 * actual_way));
   }
 
   MetaEntry* find(uint64_t last_addr)
   {
     size_t setIndex = getSetIndex(last_addr);
-    auto& set = data[setIndex];
+    auto& set = table[setIndex];
 
     // size_t wayIndex = getWayIndex(last_addr);
     // auto& line = set[wayIndex];
@@ -294,7 +295,7 @@ public:
   bool insert(uint64_t last_addr, uint64_t target_addr, bool high_priority)
   {
     size_t setIndex = getSetIndex(last_addr);
-    auto& set = data[setIndex];
+    auto& set = table[setIndex];
 
     // size_t wayIndex = getWayIndex(last_addr);
     // auto& line = set[wayIndex];
@@ -306,14 +307,14 @@ public:
   {
     if (direction > 0 && actual_way < META_WAY_MAX) {
       actual_way++;
-      for (auto& set : data) {
+      for (auto& set : table) {
         for (size_t i = 0; i < 12; i++) {
           set.entry.push_back(LFUCache<MetaEntry>::CacheLine());
         }
       }
     } else if (direction < 0 && actual_way > META_WAY_MIN) {
       actual_way--;
-      for (auto& set : data) {
+      for (auto& set : table) {
         for (size_t i = 0; i < 12; i++) {
           set.entry.pop_back();
         }
@@ -369,7 +370,7 @@ public:
 
   ~kairos()
   {
-    cout << "free kairos" << endl;
+    cout << "free Kairos" << endl;
     llc_cache = nullptr;
   }
   void set_llc_reference(CACHE* llc)

@@ -1,9 +1,9 @@
-#include "prophet.h"
+#include "ptp.h"
 
 #include <cassert>
 #include <utility>
 
-void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8_t type, vector<uint64_t>& pref_addr)
+void ptp::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8_t type, vector<uint64_t>& pref_addr)
 {
   if (disablePF)
     return;
@@ -37,7 +37,7 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
     }
   }
 
-  if (enableInsertFilter && !inTraining && profileInsertTable.find(ip) == profileInsertTable.end())
+  if (enableInsertFilter && enablePGO && profileInsertTable.find(ip) == profileInsertTable.end())
     return;
 
   global_timestamp++;
@@ -48,90 +48,93 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
   ProphetMRBTableEntry* reuseData = mrbTable->find(block_addr);
 
   uint64_t lastAddr = pcTable.find(ip) != pcTable.end() ? pcTable[ip] : 0;
-  if (lastAddr == block_addr)
-    return;
-  if (reuseData) {
-    if (reuseData->counter < MRB_MAX_COUNTER)
-      reuseData->counter++;
-    mrbTable->set_mru(block_addr);
-  }
-  if (metadata) {
-    metaTable->set_mru(block_addr);
-    if (profileUtiTable.find(block_addr) != profileUtiTable.end()) {
-      profileUtiTable[block_addr]++;
-    } else {
-      profileUtiTable[block_addr] = 0;
+  if (lastAddr != block_addr) {
+    if (reuseData) {
+      if (reuseData->counter < MRB_MAX_COUNTER)
+        reuseData->counter++;
+      mrbTable->set_mru(block_addr);
     }
-    if (!metadata->used) {
-      metadata->used = true;
-      // trainTable[metadata->pc].meta_used++;
-    }
-  }
-
-  // 2.issue: metadata table
-  uint64_t lookup = block_addr;
-  int issued_by_metatable = issue_metatable(metaTable, lookup, ip, pref_addr);
-  if (enableMRB) {
-    int issued_by_reuse = issue_mrbtable(mrbTable, lookup, ip, pref_addr);
-  }
-  for (auto& prefetch_address : pref_addr) {
-    // llc_cache->prefetch_line(ip, addr, prefetch_address, FILL_L2, 0);
-    prefetched_addr[prefetch_address >> LOG2_BLOCK_SIZE] = ip;
-    trainTable[ip].issued += 1;
-  }
-
-  // 3.update
-  // 3.1 update the metaTable
-
-  if (lastAddr != 0) {
-    ProphetMetaTableEntry* lastMeta = metaTable->find(lastAddr);
-    if (lastMeta) {
-      bool matched = false;
-      if (lastMeta->correlatedAddr == block_addr) {
-        matched = true;
+    if (metadata) {
+      metaTable->set_mru(block_addr);
+      if (profileUtiTable.find(block_addr) != profileUtiTable.end()) {
+        profileUtiTable[block_addr]++;
+      } else {
+        profileUtiTable[block_addr] = 0;
       }
-      if (!matched) {
-        uint64_t victimAddr = lastMeta->correlatedAddr;
-        ProphetMetaTableEntry temp_entry(block_addr);
-        metaTable->insert(lastAddr, temp_entry, 1);
+      if (!metadata->used) {
+        metadata->used = true;
+        // trainTable[metadata->pc].meta_used++;
+      }
+    }
 
-        // victim buffer logic
-        if (profileReplTable[ip] > 1) {
-          ProphetMRBTableEntry* victimMeta = mrbTable->find(lastAddr);
-          if (!victimMeta) {
-            ProphetMRBTableEntry temp_entry(victimAddr);
-            mrbTable->insert(lastAddr, temp_entry);
-          } else {
-            if (victimMeta->correlatedAddr == victimAddr) {
-              if (victimMeta->counter < MRB_MAX_COUNTER) {
-                victimMeta->counter++;
-              }
-            } else {
+    // 2.issue: metadata table
+    uint64_t lookup = block_addr;
+    int issued_by_metatable = issue_metatable(metaTable, lookup, ip, pref_addr);
+    if (enableMRB) {
+      int issued_by_reuse = issue_mrbtable(mrbTable, lookup, ip, pref_addr);
+    }
+    for (auto& prefetch_address : pref_addr) {
+      // llc_cache->prefetch_line(ip, addr, prefetch_address, FILL_L2, 0);
+      prefetched_addr[prefetch_address >> LOG2_BLOCK_SIZE] = ip;
+      trainTable[ip].issued += 1;
+    }
+
+    // 3.update
+    // 3.1 update the metaTable
+    if (lastAddr != 0) {
+      ProphetMetaTableEntry* lastMeta = metaTable->find(lastAddr);
+      if (lastMeta) {
+        bool matched = false;
+        if (lastMeta->correlatedAddr == block_addr) {
+          matched = true;
+        }
+        if (!matched) {
+          uint64_t victimAddr = lastMeta->correlatedAddr;
+          ProphetMetaTableEntry temp_entry(block_addr);
+          metaTable->insert(lastAddr, temp_entry, 1);
+
+          // victim buffer logic
+          if (profileReplTable[ip] > 1) {
+            ProphetMRBTableEntry* victimMeta = mrbTable->find(lastAddr);
+            if (!victimMeta) {
               ProphetMRBTableEntry temp_entry(victimAddr);
               mrbTable->insert(lastAddr, temp_entry);
+            } else {
+              if (victimMeta->correlatedAddr == victimAddr) {
+                if (victimMeta->counter < MRB_MAX_COUNTER) {
+                  victimMeta->counter++;
+                }
+              } else {
+                ProphetMRBTableEntry temp_entry(victimAddr);
+                mrbTable->insert(lastAddr, temp_entry);
+              }
             }
           }
         }
-      }
-    } else {
-      ProphetMetaTableEntry temp_entry(block_addr);
-      if (!inTraining && enablePGLRU && profileReplTable.find(ip) != profileReplTable.end())
-        metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
-      else {
-        if (!metaTable->insert(lastAddr, temp_entry, 1)) // lyq: profile中，prio = 0 ？
-        {
-          numEntriesinTable++;
+      } else {
+        ProphetMetaTableEntry temp_entry(block_addr);
+        if (enablePGO && enablePGLRU && profileReplTable.find(ip) != profileReplTable.end())
+          metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
+        else {
+          if (!metaTable->insert(lastAddr, temp_entry, 1)) // lyq: profile中，prio = 0 ？
+          {
+            numEntriesinTable++;
+          }
         }
+        trainTable[ip].meta_inserted++;
       }
-      trainTable[ip].meta_inserted++;
     }
-  }
 
-  // 3.2 update the pcTable
-  pcTable[ip] = block_addr;
+    // 3.2 update the pcTable
+    pcTable[ip] = block_addr;
+  }
+  else{
+    // last addr = cur addr
+    
+  }
 }
 
-int prophet::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
+int ptp::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
 {
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
@@ -154,7 +157,7 @@ int prophet::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint6
   return issued;
 }
 
-int prophet::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
+int ptp::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
 {
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
@@ -178,13 +181,13 @@ int prophet::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t
   return issued;
 }
 
-void prophet::outPrefetcherPGOInfo() {}
+void ptp::outPrefetcherPGOInfo() {}
 
-uint32_t prophet::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
-                                           uint32_t metadata_in, std::string latepf)
+uint32_t ptp::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
+                                       uint32_t metadata_in, std::string latepf)
 {
 #ifdef ELABORATE_LOG
-  if (!warmup_complete && !llc_cache->warmup){
+  if (!warmup_complete && !llc_cache->warmup) {
     warmup_complete = true;
     logs.push_back("WARMUP COMPLETE");
   }
@@ -242,12 +245,12 @@ uint32_t prophet::prefetcher_cache_operate(champsim::address addr, champsim::add
   return metadata_in;
 }
 
-uint32_t prophet::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
+uint32_t ptp::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
 {
   return metadata_in;
 }
 
-void prophet::prefetcher_final_stats()
+void ptp::prefetcher_final_stats()
 {
 #ifdef ELABORATE_LOG
   std::ofstream ofs(out_file);
@@ -259,7 +262,7 @@ void prophet::prefetcher_final_stats()
 #endif
 }
 
-void prophet::prefetcher_cycle_operate() {}
+void ptp::prefetcher_cycle_operate() {}
 
 // bool ProphetMetaTable::insert(uint64_t key, const ProphetMetaTableEntry& data, uint8_t priority)
 // {
@@ -283,8 +286,8 @@ void prophet::prefetcher_cycle_operate() {}
 //     } else {
 //       reason = "CONFLICT";
 //     }
-//     oss1 << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " " << victim_entry.data.correlatedAddr;
-//     pp->logs.push_back(oss1.str());
+//     oss1 << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " " <<
+//     victim_entry.data.correlatedAddr; pp->logs.push_back(oss1.str());
 
 //     ret = true;
 //   }

@@ -1,5 +1,5 @@
 {
-    "executable_name": "champsim.baseline",
+    "executable_name": "champsim.triangel",
     "block_size": 64,
     "page_size": 4096,
     "heartbeat_frequency": 10000000,
@@ -27,7 +27,7 @@
             "dispatch_latency": 1,
             "schedule_latency": 0,
             "execute_latency": 0,
-            "branch_predictor": "bimodal",
+            "branch_predictor": "perceptron",
             "btb": "basic_btb"
         }
     ],
@@ -67,22 +67,22 @@
         "prefetcher": "no"
     },
     "L2C": {
-        "sets": 1024,
-        "ways": 8,
+        "sets": 2048,
+        "ways": 16,
         "rq_size": 32,
         "wq_size": 32,
         "pq_size": 16,
         "mshr_size": 32,
-        "latency": 10,
+        "latency": 12,
         "max_tag_check": 1,
         "max_fill": 1,
         "prefetch_as_load": false,
         "virtual_prefetch": false,
         "prefetch_activate": "LOAD,PREFETCH",
-        "prefetcher": "baseline"
+        "prefetcher": "triangel"
     },
     "ITLB": {
-        "sets": 16,
+        "sets": 32,
         "ways": 4,
         "rq_size": 16,
         "wq_size": 16,
@@ -94,7 +94,7 @@
         "prefetch_as_load": false
     },
     "DTLB": {
-        "sets": 16,
+        "sets": 32,
         "ways": 4,
         "rq_size": 16,
         "wq_size": 16,
@@ -106,7 +106,7 @@
         "prefetch_as_load": false
     },
     "STLB": {
-        "sets": 128,
+        "sets": 256,
         "ways": 12,
         "rq_size": 32,
         "wq_size": 32,
@@ -133,23 +133,23 @@
     },
     "LLC": {
         "frequency": 4000,
-        "sets": 2048,
+        "sets": 4096,
         "ways": 16,
         "rq_size": 32,
         "wq_size": 32,
         "pq_size": 32,
         "mshr_size": 64,
-        "latency": 20,
+        "latency": 40,
         "max_tag_check": 1,
         "max_fill": 1,
         "prefetch_as_load": false,
         "virtual_prefetch": false,
         "prefetch_activate": "LOAD,PREFETCH",
         "prefetcher": "no",
-        "replacement": "lru"
+        "replacement": "drrip"
     },
     "physical_memory": {
-        "data_rate": 3200,
+        "data_rate": 4800,
         "channels": 1,
         "ranks": 1,
         "bankgroups": 8,
@@ -159,10 +159,10 @@
         "channel_width": 8,
         "wq_size": 64,
         "rq_size": 64,
-        "tCAS": 24,
-        "tRCD": 24,
-        "tRP": 24,
-        "tRAS": 52,
+        "tCAS": 16.6,
+        "tRCD": 16.6,
+        "tRP": 16.6,
+        "tRAS": 33.2,
         "refresh_period": 32,
         "refreshes_per_period": 8192
     },

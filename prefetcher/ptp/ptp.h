@@ -1,5 +1,5 @@
-#ifndef PROPHET
-#define PROPHET
+#ifndef PTP
+#define PTP
 
 #include <cassert>
 #include <cstdint>
@@ -24,10 +24,12 @@
 #define MRB_MAX_COUNTER 3
 #define GLOBAL_DEGREE 1 // metatable & mrb_table has this degree
 
-#define IS_TRAIN false
-#define ENABLE_MRB true
+#define ENABLE_MRB false
+#define ENABLE_PGO false
 
-class prophet;
+#define GLOBAL_PC_QUEUE_SIZE 16
+
+class ptp;
 
 struct SingleMetaEntry {
   uint64_t correlatedAddr;
@@ -91,11 +93,11 @@ class ProphetMetaTable : public LRUSetAssociativeCache<ProphetMetaTableEntry>
 
 public:
   std::unordered_map<uint64_t, std::set<uint64_t>> reverse_metatable;
-  prophet* pp;
+  ptp* pp;
 
   ProphetMetaTable(int size, int num_ways) : Super(size, num_ways), priority_pgo(num_sets, vector<uint8_t>(num_ways, 0)) {}
 
-  void setpp(prophet* p) { pp = p; }
+  void setpp(ptp* p) { pp = p; }
 
   ProphetMetaTableEntry* find(uint64_t key)
   {
@@ -198,13 +200,18 @@ public:
   }
 };
 
-class prophet : public champsim::modules::prefetcher
+struct GlobalPCEntry{
+  uint64_t pc;
+  uint64_t timestamp;
+}
+
+class ptp : public champsim::modules::prefetcher
 {
 public:
   // BaseTags* cachetags;
   CACHE* llc_cache = NULL;
   int debug_level = 0;
-  bool inTraining = IS_TRAIN;
+  bool enablePGO = ENABLE_PGO;
   bool enableMRB = ENABLE_MRB;
   int globalDegree = GLOBAL_DEGREE;
   bool disablePF = false;
@@ -236,6 +243,8 @@ public:
   std::set<uint64_t> metaInsertedPool;
 
   std::map<uint64_t, uint64_t> prefetched_addr; // <block_addr, trigger pc>
+
+  std::queue<GlobalPCEntry> globalPCQueue;
 
   std::string out_file;
   std::vector<std::string> logs;
@@ -276,10 +285,14 @@ public:
     llc_cache = llc;
     benchmark = champsim::global_trace_name;
 
-    out_file = "/mnt/data/lyq/exprlog/prophet/" + toProfilePath(benchmark) + ".txt";
+    out_file = "/mnt/data/lyq/exprlog/ptp/" + toProfilePath(benchmark) + ".txt";
     cout << out_file << endl;
     
-    if (!inTraining) {
+    if (!ENABLE_PGO){
+      metaTable = new ProphetMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
+      metaTable->setpp(this);
+    }
+    else{
       std::string trace_path(benchmark);
       std::string file_name = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(trace_path) + ".txt";
       // std::string file_name = "profile.txt";

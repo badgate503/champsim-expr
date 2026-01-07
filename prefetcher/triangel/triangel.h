@@ -13,8 +13,8 @@
 
 #define MAX_DEGREE 4
 
-#define CACHE_INDEX_BITS 11
-#define CACHE_SETMASK ((1 << 11) - 1)
+#define CACHE_INDEX_BITS 12
+#define CACHE_SETMASK ((1 << 12) - 1)
 #define CACHE_ASSOC 16
 
 #define TRNGL_TU_INDEX_BITS 5
@@ -33,8 +33,8 @@
 #define TRNGL_RB_SETMASK ((1 << 7) - 1)
 #define TRNGL_RB_ASSOC 2
 
-#define TRNGL_MD_INDEX_BITS 11
-#define TRNGL_MD_SETMASK ((1 << 11) - 1)
+#define TRNGL_MD_INDEX_BITS 12
+#define TRNGL_MD_SETMASK ((1 << 12) - 1)
 #define TRNGL_MD_ASSOC 96
 
 #define TRNGL_SD_INDEX_BITS 6
@@ -57,12 +57,9 @@ public:
     DLinkedNode* pre;
     DLinkedNode* post;
   };
-  
+
   int count;
   int capacity;
-
-  
-  
 
   ReplacementPolicy policy;
 
@@ -73,10 +70,9 @@ public:
   DLinkedNode* tail;
 
 public:
-  Cacheway(int capacity, ReplacementPolicy policy = LRU, const std::string& owner = "unknown")
-      : count(0), capacity(capacity), policy(policy), owner(owner)
+  Cacheway(int capacity, ReplacementPolicy policy = LRU, const std::string& owner = "unknown") : count(0), capacity(capacity), policy(policy), owner(owner)
   {
-    
+
     head = new DLinkedNode();
     head->pre = nullptr;
 
@@ -95,8 +91,9 @@ public:
 
   Cacheway& operator=(const Cacheway& other) = delete;
 
-  ~Cacheway() { 
-    clear(); 
+  ~Cacheway()
+  {
+    clear();
     delete head;
     delete tail;
   }
@@ -120,21 +117,23 @@ public:
 
   int decrementCapacity(int n)
   {
-    if(n >= capacity){
+    if (n >= capacity) {
       int total_evicted = count;
       clear();
       capacity = 0;
       return total_evicted;
     } else {
-      if(count > capacity - n) {
+      if (count > capacity - n) {
         int to_evict = count - (capacity - n);
         int total_evicted = 0;
         for (int i = 0; i < to_evict; ++i) {
           DLinkedNode* tailNode = popTail();
-          cache.erase(tailNode->key);
-          --count;
-          ++total_evicted;
-          delete tailNode;
+          if (tailNode) {
+            cache.erase(tailNode->key);
+            --count;
+            ++total_evicted;
+            delete tailNode;
+          }
         }
         capacity -= n;
         return total_evicted;
@@ -167,7 +166,8 @@ public:
       return nullptr;
     }
     DLinkedNode* node = cache[key];
-    if(policy == LRU) moveToHead(node);
+    if (policy == LRU)
+      moveToHead(node);
 
     return &(node->value);
   }
@@ -187,10 +187,12 @@ public:
 
       if (count > capacity) {
         DLinkedNode* tailNode = popTail();
-        cache.erase(tailNode->key);
-        --count;
-        delete tailNode;
-        return true;
+        if (tailNode) {
+          cache.erase(tailNode->key);
+          --count;
+          delete tailNode;
+          return true;
+        }
       }
     } else {
       DLinkedNode* node = cache[key];
@@ -201,9 +203,10 @@ public:
     return false;
   }
 
-  T* get_victim(uint64_t key){
+  T* get_victim(uint64_t key)
+  {
     if (cache.find(key) == cache.end()) {
-      if (count+1 > capacity) {
+      if (count + 1 > capacity) {
         DLinkedNode* tailNode = tail->pre;
         return tailNode == head ? nullptr : &(tailNode->value);
       } else {
@@ -214,10 +217,11 @@ public:
     }
   }
 
-  void touch(uint64_t key){
-    if(policy == FIFO) {
+  void touch(uint64_t key)
+  {
+    if (policy == FIFO) {
       return;
-    } else if(policy == LRU) {
+    } else if (policy == LRU) {
       if (cache.find(key) == cache.end()) {
         return;
       }
@@ -255,7 +259,7 @@ public:
 
     DLinkedNode* pre = node->pre;
     DLinkedNode* post = node->post;
-    
+
     pre->post = post;
     post->pre = pre;
     node->pre = nullptr;
@@ -278,17 +282,18 @@ public:
   }
 };
 
-
 template <typename T>
 class AssociativeCache
 {
-  public:
+public:
   std::vector<Cacheway<T>*> table;
   uint64_t count;
   uint64_t set_mask;
   uint64_t ways;
+
 public:
-  AssociativeCache(uint64_t sets, int ways, ReplacementPolicy policy, const std::string& owner = "unknown") : count(0), set_mask(sets - 1), ways(ways) {
+  AssociativeCache(uint64_t sets, int ways, ReplacementPolicy policy, const std::string& owner = "unknown") : count(0), set_mask(sets - 1), ways(ways)
+  {
     table.reserve(sets);
     for (size_t i = 0; i < sets; i++) {
       table.push_back(new Cacheway<T>(ways, policy, owner));
@@ -296,22 +301,24 @@ public:
     std::cout << owner << " initialized, " << ways << " ways * " << sets << " sets" << std::endl;
   }
 
-  ~AssociativeCache() {
-    for (auto& lru_cache : table) { 
+  ~AssociativeCache()
+  {
+    for (auto& lru_cache : table) {
       delete lru_cache;
     }
   }
-  
 
   /*
     without touching LRU
   */
-  T* find(uint64_t key) {
+  T* find(uint64_t key)
+  {
     uint64_t set_index = key & set_mask;
     return table[set_index]->find(key);
   }
 
-  T* get(uint64_t key) {
+  T* get(uint64_t key)
+  {
     uint64_t set_index = key & set_mask;
     return table[set_index]->get(key);
   }
@@ -319,7 +326,8 @@ public:
   /**
     returns evicted or not
   */
-  bool set(uint64_t key, T value) {
+  bool set(uint64_t key, T value)
+  {
     uint64_t set_index = key & set_mask;
     bool evicted = table[set_index]->set(key, value);
     if (!evicted) {
@@ -328,17 +336,17 @@ public:
     return evicted;
   }
 
-  T* get_victim(uint64_t key) {
+  T* get_victim(uint64_t key)
+  {
     uint64_t set_index = key & set_mask;
     return table[set_index]->get_victim(key);
   }
-  
-  void touch(uint64_t key) {
+
+  void touch(uint64_t key)
+  {
     uint64_t set_index = key & set_mask;
     table[set_index]->touch(key);
   }
-
-
 };
 
 class SatCounter
@@ -384,6 +392,7 @@ struct TrainingUnitEntry {
   SatCounter pattern_conf0;
   SatCounter pattern_conf1;
   SatCounter sample_rate;
+
   bool currently_twodist_pf; // 添加：控制是否使用两步预取
 
   TrainingUnitEntry()
@@ -395,9 +404,10 @@ struct TrainingUnitEntry {
   static uint64_t extractTag(uint64_t addr) { return addr >> TRNGL_TU_INDEX_BITS; }
 
   TrainingUnitEntry(uint64_t PC, uint64_t last_addr, uint64_t time)
-      : key(PC), last_addr0(last_addr), last_addr1(0),  timestamp(time), local_timestamp(0), reuse_conf(4, 7), pattern_conf0(4, 7), pattern_conf1(4, 7),
+      : key(PC), last_addr0(last_addr), last_addr1(0), timestamp(time), local_timestamp(0), reuse_conf(4, 7), pattern_conf0(4, 7), pattern_conf1(4, 7),
         sample_rate(4, 8), currently_twodist_pf(false)
-  {}
+  {
+  }
 };
 
 struct MetadataEntry {
@@ -435,7 +445,9 @@ struct MetadataEntry {
 
 struct HistorySamplerEntry {
   uint64_t key;
-  TrainingUnitEntry* tu_entry;
+  //TrainingUnitEntry* tu_entry;
+
+  uint64_t tu_entry_key;
 
   uint64_t timestamp;   // local_timestamp
   uint64_t target_addr; // next
@@ -446,7 +458,7 @@ struct HistorySamplerEntry {
   HistorySamplerEntry()
   {
     key = 0;
-    tu_entry = nullptr;
+    tu_entry_key = 0;
     target_addr = 0;
     timestamp = 0;
     reused = false;
@@ -455,8 +467,8 @@ struct HistorySamplerEntry {
 
   uint64_t extractTag(uint64_t addr) { return addr >> TRNGL_HS_INDEX_BITS; }
 
-  HistorySamplerEntry(uint64_t addr, TrainingUnitEntry* tu_entry, uint64_t target_addr, uint64_t timestamp)
-      : key(addr), tu_entry(tu_entry), target_addr(target_addr), timestamp(timestamp), reused(false), confident(false)
+  HistorySamplerEntry(uint64_t addr, uint64_t tu_entry, uint64_t target_addr, uint64_t timestamp)
+      : key(addr), tu_entry_key(tu_entry), target_addr(target_addr), timestamp(timestamp), reused(false), confident(false)
   {
   }
 
@@ -468,7 +480,7 @@ struct HistorySamplerEntry {
   {
     if (this != &other) { // Check for self-assignment
       this->key = other.key;
-      this->tu_entry = other.tu_entry;
+      this->tu_entry_key = other.tu_entry_key;
       this->target_addr = other.target_addr;
       this->timestamp = other.timestamp;
       this->reused = other.reused;
@@ -514,9 +526,7 @@ struct SetDuellerEntry {
   Cacheway<uint64_t> cache_track{TRNGL_SD_CACHE_SIZE};
   Cacheway<uint64_t> markov_track{TRNGL_SD_MARKOV_SIZE};
 
-  SetDuellerEntry() { 
-    set = 0; 
-  }
+  SetDuellerEntry() { set = 0; }
 
   SetDuellerEntry(uint64_t set) : set(set) {}
 };
@@ -532,7 +542,7 @@ public:
 
   void Randomize()
   {
-    for(auto& entry : table) {
+    for (auto& entry : table) {
       delete entry.second;
     }
     table.clear();
@@ -595,7 +605,7 @@ public:
       } else {
         table[addr & CACHE_SETMASK]->markov_track.set(addr, addr);
       }
-    } 
+    }
   }
 
   void ResetCounters()
@@ -632,7 +642,6 @@ public:
   uint64_t count;
 
 public:
-
   Metadata(uint64_t set = (1 << TRNGL_MD_INDEX_BITS), int ways = TRNGL_MD_ASSOC) : cache_way_allocated(4), count(0)
   {
     table.reserve(set);
@@ -646,7 +655,7 @@ public:
     for (auto& lru_cache : table) {
       delete lru_cache;
     }
-  } 
+  }
 
   /*
     without touching LRU
@@ -718,23 +727,23 @@ void removeDuplicates(std::vector<T>& vec)
   vec.erase(last, vec.end());
 }
 
-class triangel_revised : public champsim::modules::prefetcher
+class triangel : public champsim::modules::prefetcher
 {
 public: // All members shall be basic variables, pointers, or implement proper copy/move constructors and assignment operators
-  CACHE*   llc_cache = nullptr;
-  bool     last_access_from_mrb = false;
+  CACHE* llc_cache = nullptr;
+  bool last_access_from_mrb = false;
   uint64_t global_timestamp = 0;
   uint64_t second_chance_timestamp = 0;
-  int      current_partition = 4; // Start with a neutral partition
+  int current_partition = 4; // Start with a neutral partition
 
-  AssociativeCache<TrainingUnitEntry>*        TU = new AssociativeCache<TrainingUnitEntry>(1 << TRNGL_TU_INDEX_BITS, TRNGL_TU_ASSOC, LRU, "TU");
-  AssociativeCache<HistorySamplerEntry>*      HS = new AssociativeCache<HistorySamplerEntry>(1 << TRNGL_HS_INDEX_BITS, TRNGL_HS_ASSOC, LRU, "HS");
+  AssociativeCache<TrainingUnitEntry>* TU = new AssociativeCache<TrainingUnitEntry>(1 << TRNGL_TU_INDEX_BITS, TRNGL_TU_ASSOC, LRU, "TU");
+  AssociativeCache<HistorySamplerEntry>* HS = new AssociativeCache<HistorySamplerEntry>(1 << TRNGL_HS_INDEX_BITS, TRNGL_HS_ASSOC, LRU, "HS");
   AssociativeCache<SecondChanceSamplerEntry>* SC = new AssociativeCache<SecondChanceSamplerEntry>(1 << TRNGL_SC_INDEX_BITS, TRNGL_SC_ASSOC, FIFO, "SC");
-  AssociativeCache<MetadataEntry>*            RB = new AssociativeCache<MetadataEntry>(1 << TRNGL_RB_INDEX_BITS, TRNGL_RB_ASSOC, FIFO, "RB");
-  Metadata*                                   MD = new Metadata();
-  SetDueller*                                 SD = new SetDueller();
+  AssociativeCache<MetadataEntry>* RB = new AssociativeCache<MetadataEntry>(1 << TRNGL_RB_INDEX_BITS, TRNGL_RB_ASSOC, FIFO, "RB");
+  Metadata* MD = new Metadata();
+  SetDueller* SD = new SetDueller();
 
-  SatCounter global_reuse_conf    = SatCounter(7, 64);
+  SatCounter global_reuse_conf = SatCounter(7, 64);
   SatCounter global_pattern_conf0 = SatCounter(7, 64);
   SatCounter global_pattern_conf1 = SatCounter(7, 64);
 
@@ -754,10 +763,12 @@ public: // All members shall be basic variables, pointers, or implement proper c
     return random < threshold;
   }
 
-  void set_llc_reference(CACHE* llc) { 
+  void set_llc_reference(CACHE* llc)
+  {
     llc_cache = llc;
     // initialize partition
     llc_cache->set_available_ways(16 - current_partition);
+    MD->repartition(current_partition);
   }
 
   MetadataEntry* GetMetadata(uint64_t addr, bool use_rb)
@@ -792,18 +803,17 @@ public: // All members shall be basic variables, pointers, or implement proper c
   {
     assert(addr != target_addr);
 
-    
     auto MD_entry = MD->find(addr);
-    if(MD_entry) {
+    if (MD_entry) {
       if (MD_entry->target_addr == target_addr) {
         MD_entry->conf = true;
-      } else if(!MD_entry->conf) {
+      } else if (!MD_entry->conf) {
         MD_entry->target_addr = target_addr;
       } else {
         MD_entry->conf = false;
       }
       MD->touch(MD_entry->key);
-      return false; 
+      return false;
     } else {
       MetadataEntry MD_new = MetadataEntry(addr, target_addr);
       return MD->set(addr, MD_new);
