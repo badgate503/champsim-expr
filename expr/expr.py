@@ -21,8 +21,8 @@ WHITE = '\033[97m'
 BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 END = '\033[0m'
-WARM_UP = 0
-INTERVAL = 250_000_000
+WARM_UP = 50_000_000
+INTERVAL = 200_000_000
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--mode", "-m", choices=["ipc", "missclass"], required=True, help="mode: compile or run")
@@ -59,7 +59,7 @@ if args.compile:
         with open("../champsim_config.json", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
         os.system("cd .. && make clean")
-        os.system("cd .. && ./config.sh champsim_config.json && make -j32")
+        os.system("cd .. && ./config.sh champsim_config.json && make CXXFLAGS=\"-fsanitize=address -g -O0\" LDFLAGS=\"-fsanitize=address\" -j32")
 
 if not args.traces and not args.tracelist:
     print(f"{RED}Error: Please specify traces with --traces or --tracelist.{END}")
