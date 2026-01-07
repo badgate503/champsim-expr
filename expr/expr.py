@@ -31,7 +31,9 @@ parser.add_argument("--prefetcher", "-p")
 parser.add_argument("--traces", "-t", nargs="+")
 parser.add_argument("--interval", "-i")
 parser.add_argument("--warmup", "-w")
+parser.add_argument("--auto", "-a", action="store_true", help="auto")
 parser.add_argument("--tracelist", "-l", nargs="*", type=str, help="specify tracelist lines to use")
+parser.add_argument("--output", "-o")
 
 args = parser.parse_args()
 
@@ -63,7 +65,7 @@ if not args.traces and not args.tracelist:
     print(f"{RED}Error: Please specify traces with --traces or --tracelist.{END}")
     sys.exit(1)
 
-if args.mode == "missclass":
+if args.mode == "ipc":
     WARM_UP = 50_000_000
     INTERVAL = 200_000_000
 
@@ -115,20 +117,23 @@ exe_name = f"champsim.{args.prefetcher}" if args.mode == "ipc" else f"champsim.{
 
 
 
-
+out_path = f"{LOG_PATH}/{args.prefetcher}"
+if args.output is not None:
+    out_path = os.path.abspath(args.output)
 
 print(f"\n{'='*60}\n")
 print(f"Mode: {CYAN}{args.mode}{END}, Prefetcher: {CYAN}{exe_name}{END}, Warm-up: {WARM_UP}, Interval: {INTERVAL}")
 if args.mode == "missclass":
-    print(f"Logs will be saved to {LOG_PATH}/{args.prefetcher}/ as {YELLOW}.mc.log{END} (Champsim log) and {YELLOW}.txt{END} (Miss cause classification log) files")
+    print(f"Logs will be saved to {out_path}/ as {YELLOW}.mc.log{END} (Champsim log) and {YELLOW}.txt{END} (Miss cause classification log) files")
 else:
-    print(f"Logs will be saved to {LOG_PATH}/{args.prefetcher}/ as {YELLOW}.log{END} (Champsim log) files")
+    print(f"Logs will be saved to {out_path}/ as {YELLOW}.log{END} (Champsim log) files")
 
 if exe_name not in os.listdir("../bin/"):
     print(f"{RED}Error: Executable {exe_name} not found in ../bin/. Please compile first with --compile flag.{END}")
     sys.exit(1)
 print(f"\nTotal traces: {len(all_trace_list)}, proceed?")
-input()
+if not args.auto:
+    input("Press Enter to continue...")
 
 
 
@@ -149,8 +154,8 @@ def launch_task(w, path):
         work = [f"../bin/champsim.{args.prefetcher}", "--warmup-instructions", f"{WARM_UP}", "--simulation-instructions", f"{INTERVAL}", path]
         name = f"{w}.log"
     #work = ["sleep", "10"]
-    os.makedirs(f"{LOG_PATH}/{args.prefetcher}/", exist_ok=True)
-    with open(f"{LOG_PATH}/{args.prefetcher}/{name}", "w") as f:
+    os.makedirs(f"{out_path}/", exist_ok=True)
+    with open(f"{out_path}/{name}", "w") as f:
         f.write(" ".join(work))
         f.write("\n")
         process = subprocess.Popen(
@@ -159,16 +164,18 @@ def launch_task(w, path):
             stderr=f
         )
     return (process, w, time.time())
-
+N_PROC = len(pending_tasks)
 # 先启动最多 MAX_CONCURRENT 个
 while pending_tasks and len(processes) < MAX_CONCURRENT:
     w, path = pending_tasks.pop(0)
     processes.append(launch_task(w, path))
 
+
 while processes:
     os.system("clear")
     still_run = False
-    new_processes = []
+    running = 0
+
     for p, w, st in processes:
         if p.poll() is None:
             run_time = int(time.time() - st)
@@ -177,20 +184,22 @@ while processes:
             s = run_time % 60
             print(f"{w:<30}Running   {h:02d}:{m:02d}:{s:02d}")
             still_run = True
-            new_processes.append((p, w, st))
+            running+=1
+            #new_processes.append((p, w, st))
         else:
             run_time = int(time.time() - st)
             h = run_time // 3600
             m = (run_time % 3600) // 60
             s = run_time % 60
             print(f"{w:<30}Terminated {h:02d}:{m:02d}:{s:02d}")
+    print(f"Total: {N_PROC}, Running: {running}, Pending: {len(pending_tasks)}, Terminated: {N_PROC - len(pending_tasks) - running}")
     # 启动新任务补足并发
-    while pending_tasks and len(new_processes) < MAX_CONCURRENT:
+    while pending_tasks and running < MAX_CONCURRENT:
+        running+=1
         w, path = pending_tasks.pop(0)
-        new_processes.append(launch_task(w, path))
+        processes.append(launch_task(w, path))
         still_run = True
-    processes = new_processes
     if not still_run:
         break
-    time.sleep(5)
+    time.sleep(1)
 

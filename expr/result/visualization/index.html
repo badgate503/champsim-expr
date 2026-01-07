@@ -64,22 +64,23 @@
     <canvas id="flowCanvas" width="1400" height="700"
         style="width:90vw;max-width:1200px;height:700px;border:1px solid #ccc;background:#fff;"></canvas>
     <script>
-        async function fetchIPC() {
-            const resp = await fetch('../result/baseline/ipc.txt');
+        async function fetchIPC(setname) {
+            const resp = await fetch('../data/'+setname +'/ipc.txt');
             const text = await resp.text();
-
+            console.log(text);
             const labels = [];
             const data = [];
 
             text.split(/\r?\n/).forEach(line => {
-                if (!line.includes(':')) return;
-                const [name, val] = line.split(':', 2);
+                if (!line.includes(' ')) return;
+                const [name, val] = line.split(' ', 2);
                 const ipc = parseFloat(val.trim());
                 if (!isNaN(ipc)) {
                     labels.push(name.trim());
                     data.push(ipc);
                 }
             });
+            console.log(labels, data);
 
             return { labels, data };
         }
@@ -350,6 +351,7 @@
                 selectedSets = Array.from(box.querySelectorAll('input[type=checkbox]:checked')).map(c => c.value);
                 if (window.lastBarFiles) renderBarChart(window.lastBarFiles, true, window.lastBarGroup || 'baseline');
                 if (window.lastOtherFiles) renderOtherBarChart(window.lastOtherFiles, true, window.lastOtherGroup || 'prophet');
+                
                 renderIPCBarChartWithSets(true);
 
             };
@@ -595,7 +597,8 @@
     async function renderIPCBarChartWithSets(isFilterChange = false, ) {
 
         // 1. 读取 IPC 数据
-        const { labels: allTraces, data: allIPC } = await fetchIPC();
+        console.log(window)
+        const { labels: allTraces, data: allIPC } = await fetchIPC(window.lastBarGroup || 'baseline');
         if (!allTraces.length) return;
 
         // 2. 缓存原始 IPC

@@ -104,8 +104,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return
 
         # serve files under /result/ from BASE_DIR/result/
-        if path.startswith('/result/'):
+        if path.startswith('/data/'):
             file_path = os.path.join(BASE_DIR, path.lstrip('/'))
+            print(file_path)
             if os.path.isfile(file_path):
                 self.send_response(200)
                 if file_path.endswith('.txt'):

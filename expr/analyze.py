@@ -262,12 +262,16 @@ for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.txt')):
 ipc_results = []
 for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.log')):
     log_file_name = os.path.splitext(os.path.basename(log_file))[0]
+    base_file = os.path.join(LOG_PATH, "no", log_file_name+".log")
+
     print(f"\n> Calculating IPC for {CYAN}{log_file_name}{END}")
     ipc = get_ipc(log_file)
-    ipc_results.append((log_file_name, ipc))
-    print(f"{CYAN}{log_file_name}{END}: IPC = {GREEN}{ipc:.4f}{END}")
+    base_ipc = get_ipc(base_file)
+    ipc_results.append((log_file_name, ipc/base_ipc))
+    print(f"{CYAN}{log_file_name}{END}: IPC = {GREEN}{ipc:.4f}{END}, Base IPC = {GREEN}{base_ipc:.4f}{END}, IPC improvement = {GREEN}{ipc/base_ipc:.4f}{END}")
 
-print(f"\nWriting IPC results to {YELLOW}{RESULT_PATH}/data/{args.prefetcher}/ipc{END}, total {len(ipc_results)} entries.")
-with open(f"{RESULT_PATH}/data/{args.prefetcher}/ipc", "w") as f:
+print(f"\nWriting IPC Speedup results to {YELLOW}{RESULT_PATH}/data/{args.prefetcher}/ipc{END}, total {len(ipc_results)} entries.")
+os.makedirs(f"{RESULT_PATH}/data/{args.prefetcher}", exist_ok=True)
+with open(f"{RESULT_PATH}/data/{args.prefetcher}/ipc.txt", "w") as f:
     for log_file, ipc in ipc_results:
         f.write(f"{log_file} {ipc}\n")

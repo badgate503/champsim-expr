@@ -1,0 +1,5 @@
+[VMEM] WARNING: physical memory size is smaller than virtual memory size.
+TU initialized, 16 ways * 32 sets
+HS initialized, 2 ways * 256 sets
+SC initialized, 2 ways * 32 sets
+RB initialized, 2 ways * 128 sets
