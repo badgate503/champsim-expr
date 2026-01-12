@@ -44,8 +44,8 @@ void ptp::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8
 
   // 1.search
   // MetaEntry *metadata = &(metaTable->find(block_addr)->data);
-  ProphetMetaTableEntry* metadata = metaTable->find(block_addr);
-  ProphetMRBTableEntry* reuseData = mrbTable->find(block_addr);
+  ptpMetaTableEntry* metadata = metaTable->find(block_addr);
+  ptpMRBTableEntry* reuseData = mrbTable->find(block_addr);
 
   uint64_t lastAddr = pcTable.find(ip) != pcTable.end() ? pcTable[ip] : 0;
   if (lastAddr != block_addr) {
@@ -82,7 +82,7 @@ void ptp::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8
     // 3.update
     // 3.1 update the metaTable
     if (lastAddr != 0) {
-      ProphetMetaTableEntry* lastMeta = metaTable->find(lastAddr);
+      ptpMetaTableEntry* lastMeta = metaTable->find(lastAddr);
       if (lastMeta) {
         bool matched = false;
         if (lastMeta->correlatedAddr == block_addr) {
@@ -90,14 +90,14 @@ void ptp::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8
         }
         if (!matched) {
           uint64_t victimAddr = lastMeta->correlatedAddr;
-          ProphetMetaTableEntry temp_entry(block_addr);
+          ptpMetaTableEntry temp_entry(block_addr);
           metaTable->insert(lastAddr, temp_entry, 1);
 
           // victim buffer logic
           if (profileReplTable[ip] > 1) {
-            ProphetMRBTableEntry* victimMeta = mrbTable->find(lastAddr);
+            ptpMRBTableEntry* victimMeta = mrbTable->find(lastAddr);
             if (!victimMeta) {
-              ProphetMRBTableEntry temp_entry(victimAddr);
+              ptpMRBTableEntry temp_entry(victimAddr);
               mrbTable->insert(lastAddr, temp_entry);
             } else {
               if (victimMeta->correlatedAddr == victimAddr) {
@@ -105,14 +105,14 @@ void ptp::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8
                   victimMeta->counter++;
                 }
               } else {
-                ProphetMRBTableEntry temp_entry(victimAddr);
+                ptpMRBTableEntry temp_entry(victimAddr);
                 mrbTable->insert(lastAddr, temp_entry);
               }
             }
           }
         }
       } else {
-        ProphetMetaTableEntry temp_entry(block_addr);
+        ptpMetaTableEntry temp_entry(block_addr);
         if (enablePGO && enablePGLRU && profileReplTable.find(ip) != profileReplTable.end())
           metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
         else {
@@ -127,28 +127,54 @@ void ptp::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8
 
     // 3.2 update the pcTable
     pcTable[ip] = block_addr;
-  }
-  else{
+  } else {
     // last addr = cur addr
-    
+    if (!cache_hit) {
+      uint64_t triggerIP = 0;
+      for (auto it = GPQ.rbegin(); it != GPQ.rend(); ++it) {
+        if (!it->hit) {
+          // use first miss pc
+          triggerIP = it->ip;
+          break;
+        }
+      }
+      if (!triggerIP && !GPQ.empty()) {
+        // use the oldest pc
+        triggerIP = GPQ.begin()->ip;
+      }
+      if (triggerIP)
+        GPMetaTable[triggerIP] = block_addr;
+    }
+  }
+
+  if (GPMetaTable.find(ip) != GPMetaTable.end()) {
+    pref_addr.push_back(GPMetaTable[ip] << LOG2_BLOCK_SIZE);
+  }
+
+  if (GPQ.size() < GPQ_SIZE) {
+    GPQ.push_back({ip, cache_hit, llc_cache->current_cycle()});
+  } else {
+    GPQ.pop_front();
+    GPQ.push_back({ip, cache_hit, llc_cache->current_cycle()});
   }
 }
 
-int ptp::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
+int ptp::issue_metatable(ptpMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
 {
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
-    ProphetMetaTableEntry* candidate = metaTable->find(lookup);
+    ptpMetaTableEntry* candidate = metaTable->find(lookup);
     if (candidate == nullptr)
       break;
     addToUsedPool(lookup);
     if (candidate->correlatedAddr != 0) {
 
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
+#ifdef ELABORATE_LOG
+        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr)
+                << std::endl;
+#endif
         addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
-        std::ostringstream oss;
-        oss << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr);
-        logs.push_back(oss.str());
         issued++;
       }
       lookup = candidate->correlatedAddr;
@@ -157,11 +183,11 @@ int ptp::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint64_t 
   return issued;
 }
 
-int ptp::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
+int ptp::issue_mrbtable(ptpMRBTable* mrbTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
 {
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
-    ProphetMRBTableEntry* candidate = mrbTable->find(lookup);
+    ptpMRBTableEntry* candidate = mrbTable->find(lookup);
     if (candidate == nullptr)
       break;
     addToUsedPool(lookup);
@@ -169,9 +195,8 @@ int ptp::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t pc,
       lookup = candidate->correlatedAddr;
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
 #ifdef ELABORATE_LOG
-        std::ostringstream oss;
-        oss << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr);
-        logs.push_back(oss.str());
+        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr)
+                << std::endl;
 #endif
         addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
         issued++;
@@ -189,7 +214,7 @@ uint32_t ptp::prefetcher_cache_operate(champsim::address addr, champsim::address
 #ifdef ELABORATE_LOG
   if (!warmup_complete && !llc_cache->warmup) {
     warmup_complete = true;
-    logs.push_back("WARMUP COMPLETE");
+    logfile << "WARMUP COMPLETE" << std::endl;
   }
   if (!cache_hit) { // L2 CACHE MISS
     if (ip.to<uint64_t>() != 0) {
@@ -198,15 +223,11 @@ uint32_t ptp::prefetcher_cache_operate(champsim::address addr, champsim::address
       uint64_t last_addr = get_last(ip.to<uint64_t>());
       std::set<uint64_t> triggers = get_triggers(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
 
-      std::ostringstream oss;
-      oss << std::dec << llc_cache->current_cycle() << " MISS " << latepf << " " << std::hex << pf_addr << " " << ip << " " << last_addr;
-
+      logfile << std::dec << llc_cache->current_cycle() << " MISS " << latepf << " " << std::hex << pf_addr << " " << ip << " " << last_addr;
       for (uint64_t t : triggers) {
-        oss << " " << t;
+        logfile << " " << t;
       }
-      logs.push_back(oss.str());
-
-      // ofs.close();
+      logfile << std::endl;
     }
   } else {
     if (ip.to<uint64_t>() != 0) {
@@ -215,15 +236,11 @@ uint32_t ptp::prefetcher_cache_operate(champsim::address addr, champsim::address
       uint64_t last_addr = get_last(ip.to<uint64_t>());
       std::set<uint64_t> triggers = get_triggers(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
 
-      std::ostringstream oss;
-      oss << std::dec << llc_cache->current_cycle() << " HIT " << std::hex << pf_addr << " " << ip << " " << last_addr;
-
+      logfile << std::dec << llc_cache->current_cycle() << " HIT " << std::hex << pf_addr << " " << ip << " " << last_addr;
       for (uint64_t t : triggers) {
-        oss << " " << t;
+        logfile << " " << t;
       }
-      logs.push_back(oss.str());
-
-      // ofs.close();
+      logfile << std::endl;
     }
   }
 #endif
@@ -253,48 +270,43 @@ uint32_t ptp::prefetcher_cache_fill(champsim::address addr, long set, long way, 
 void ptp::prefetcher_final_stats()
 {
 #ifdef ELABORATE_LOG
-  std::ofstream ofs(out_file);
-  std::cout << "hi!" << logs.size() << std::endl;
-  for (std::string s : logs) {
-    ofs << s << "\n";
-  }
-  ofs.close();
+  logfile.close();
 #endif
 }
 
 void ptp::prefetcher_cycle_operate() {}
 
-// bool ProphetMetaTable::insert(uint64_t key, const ProphetMetaTableEntry& data, uint8_t priority)
-// {
-//   reverse_metatable[data.correlatedAddr].insert(key);
+/*
+    If evict another valid entry: return true!
+    else: return false!
+*/
+bool ptpMetaTable::insert(uint64_t key, const ptpMetaTableEntry& data, uint8_t priority)
+{
+  reverse_metatable[data.correlatedAddr].insert(key);
 
-//   Entry victim_entry = Super::insert(key, data);
-//   Super::set_mru(key);
-//   uint64_t index = key % this->num_sets;
-//   uint64_t tag = key / this->num_sets;
-//   int way = this->cams[index][tag];
-//   priority_pgo[index][way] = priority;
-//   bool ret = false;
-//   if (victim_entry.valid) {
-//     std::ostringstream oss1;
-//     std::string reason;
-//     // std::cout << "hola" << std::endl;
-//     reverse_metatable[victim_entry.data.correlatedAddr].erase(victim_entry.key);
-
-//     if (victim_entry.tag != tag) {
-//       reason = "CAPACITY";
-//     } else {
-//       reason = "CONFLICT";
-//     }
-//     oss1 << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " " <<
-//     victim_entry.data.correlatedAddr; pp->logs.push_back(oss1.str());
-
-//     ret = true;
-//   }
-//   std::ostringstream oss;
-//   oss << std::dec << pp->llc_cache->current_cycle() << " ADD " << std::hex << key << " " << data.correlatedAddr;
-//   // pp->logs.push_back(oss.str());
-//   pp->logs.push_back(oss.str());
-
-//   return ret;
-// }
+  Entry victim_entry = Super::insert(key, data);
+  Super::set_mru(key);
+  uint64_t index = key % this->num_sets;
+  uint64_t tag = key / this->num_sets;
+  int way = this->cams[index][tag];
+  priority_pgo[index][way] = priority;
+  bool ret = false;
+  if (victim_entry.valid) {
+    reverse_metatable[victim_entry.data.correlatedAddr].erase(victim_entry.key);
+#ifdef ELABORATE_LOG
+    std::string reason;
+    if (victim_entry.tag != tag) {
+      reason = "CAPACITY";
+    } else {
+      reason = "CONFLICT";
+    }
+    pp->logfile << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " "
+                << victim_entry.data.correlatedAddr << std::endl;
+#endif
+    ret = true;
+  }
+#ifdef ELABORATE_LOG
+  pp->logfile << std::dec << pp->llc_cache->current_cycle() << " ADD " << std::hex << key << " " << data.correlatedAddr << std::endl;
+#endif
+  return ret;
+}

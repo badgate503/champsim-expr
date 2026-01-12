@@ -250,6 +250,7 @@ public:
                                                    uint32_t metadata_in, std::string latepf ) = 0;
     virtual uint32_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
                                                 uint32_t metadata_in) = 0;
+    virtual void impl_prefetcher_late_prefetch(champsim::address addr, std::string where) = 0;
     virtual void impl_prefetcher_cycle_operate() = 0;
     virtual void impl_prefetcher_final_stats() = 0;
     virtual void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) = 0;
@@ -285,6 +286,7 @@ public:
                                                          uint32_t metadata_in, std::string latepf ) final;
     [[nodiscard]] uint32_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
                                                       uint32_t metadata_in) final;
+    void impl_prefetcher_late_prefetch(champsim::address addr, std::string where) final;
     void impl_prefetcher_cycle_operate() final;
     void impl_prefetcher_final_stats() final;
     void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) final;
@@ -336,6 +338,7 @@ public:
                                                        uint32_t metadata_in, std::string latepf ) const;
   [[nodiscard]] uint32_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
                                                     uint32_t metadata_in) const;
+  void impl_prefetcher_late_prefetch(champsim::address addr, std::string where, uint32_t metadata_in) const;
   void impl_prefetcher_cycle_operate() const;
   void impl_prefetcher_final_stats() const;
   void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) const;
@@ -424,6 +427,17 @@ uint32_t CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_cache_fill(champ
   };
 
   return std::apply([&](auto&... p) { return (return_type{} ^ ... ^ process_one(p)); }, intern_);
+}
+
+template <typename... Ps>
+void CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_late_prefetch(champsim::address addr, std::string where, uint32_t metadata_in)
+{ 
+  [[maybe_unused]] auto process_one = [&](auto& p) {
+    using namespace champsim::modules;
+    if constexpr (prefetcher::has_late_prefetch<decltype(p), champsim::address, std::string, uint32_t>)
+      p.prefetcher_late_prefetch(addr, where, metadata_in);
+  };
+  std::apply([&](auto&... p) { (..., process_one(p)); }, intern_);
 }
 
 template <typename... Ps>

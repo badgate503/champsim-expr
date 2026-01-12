@@ -143,9 +143,9 @@ int prophet::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint6
 
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
         addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
-        std::ostringstream oss;
-        oss << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr);
-        logs.push_back(oss.str());
+#ifdef ELABORATE_LOG
+        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << std::endl;
+#endif
         issued++;
       }
       lookup = candidate->correlatedAddr;
@@ -166,9 +166,7 @@ int prophet::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t
       lookup = candidate->correlatedAddr;
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
 #ifdef ELABORATE_LOG
-        std::ostringstream oss;
-        oss << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr);
-        logs.push_back(oss.str());
+        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << std::endl;
 #endif
         addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
         issued++;
@@ -186,7 +184,7 @@ uint32_t prophet::prefetcher_cache_operate(champsim::address addr, champsim::add
 #ifdef ELABORATE_LOG
   if (!warmup_complete && !llc_cache->warmup){
     warmup_complete = true;
-    logs.push_back("WARMUP COMPLETE");
+    logfile << "WARMUP COMPLETE" << std::endl;
   }
   if (!cache_hit) { // L2 CACHE MISS
     if (ip.to<uint64_t>() != 0) {
@@ -195,15 +193,11 @@ uint32_t prophet::prefetcher_cache_operate(champsim::address addr, champsim::add
       uint64_t last_addr = get_last(ip.to<uint64_t>());
       std::set<uint64_t> triggers = get_triggers(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
 
-      std::ostringstream oss;
-      oss << std::dec << llc_cache->current_cycle() << " MISS " << latepf << " " << std::hex << pf_addr << " " << ip << " " << last_addr;
-
+      logfile << std::dec << llc_cache->current_cycle() << " MISS " << latepf << " " << std::hex << pf_addr << " " << ip << " " << last_addr;
       for (uint64_t t : triggers) {
-        oss << " " << t;
+        logfile << " " << t;
       }
-      logs.push_back(oss.str());
-
-      // ofs.close();
+      logfile << std::endl;
     }
   } else {
     if (ip.to<uint64_t>() != 0) {
@@ -212,15 +206,11 @@ uint32_t prophet::prefetcher_cache_operate(champsim::address addr, champsim::add
       uint64_t last_addr = get_last(ip.to<uint64_t>());
       std::set<uint64_t> triggers = get_triggers(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
 
-      std::ostringstream oss;
-      oss << std::dec << llc_cache->current_cycle() << " HIT " << std::hex << pf_addr << " " << ip << " " << last_addr;
-
+      logfile << std::dec << llc_cache->current_cycle() << " HIT " << std::hex << pf_addr << " " << ip << " " << last_addr;
       for (uint64_t t : triggers) {
-        oss << " " << t;
+        logfile << " " << t;
       }
-      logs.push_back(oss.str());
-
-      // ofs.close();
+      logfile << std::endl;
     }
   }
 #endif
@@ -250,48 +240,38 @@ uint32_t prophet::prefetcher_cache_fill(champsim::address addr, long set, long w
 void prophet::prefetcher_final_stats()
 {
 #ifdef ELABORATE_LOG
-  std::ofstream ofs(out_file);
-  std::cout << "hi!" << logs.size() << std::endl;
-  for (std::string s : logs) {
-    ofs << s << "\n";
-  }
-  ofs.close();
+  logfile.close();
 #endif
 }
 
 void prophet::prefetcher_cycle_operate() {}
 
-// bool ProphetMetaTable::insert(uint64_t key, const ProphetMetaTableEntry& data, uint8_t priority)
-// {
-//   reverse_metatable[data.correlatedAddr].insert(key);
+bool ProphetMetaTable::insert(uint64_t key, const ProphetMetaTableEntry& data, uint8_t priority)
+{
+  reverse_metatable[data.correlatedAddr].insert(key);
 
-//   Entry victim_entry = Super::insert(key, data);
-//   Super::set_mru(key);
-//   uint64_t index = key % this->num_sets;
-//   uint64_t tag = key / this->num_sets;
-//   int way = this->cams[index][tag];
-//   priority_pgo[index][way] = priority;
-//   bool ret = false;
-//   if (victim_entry.valid) {
-//     std::ostringstream oss1;
-//     std::string reason;
-//     // std::cout << "hola" << std::endl;
-//     reverse_metatable[victim_entry.data.correlatedAddr].erase(victim_entry.key);
-
-//     if (victim_entry.tag != tag) {
-//       reason = "CAPACITY";
-//     } else {
-//       reason = "CONFLICT";
-//     }
-//     oss1 << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " " << victim_entry.data.correlatedAddr;
-//     pp->logs.push_back(oss1.str());
-
-//     ret = true;
-//   }
-//   std::ostringstream oss;
-//   oss << std::dec << pp->llc_cache->current_cycle() << " ADD " << std::hex << key << " " << data.correlatedAddr;
-//   // pp->logs.push_back(oss.str());
-//   pp->logs.push_back(oss.str());
-
-//   return ret;
-// }
+  Entry victim_entry = Super::insert(key, data);
+  Super::set_mru(key);
+  uint64_t index = key % this->num_sets;
+  uint64_t tag = key / this->num_sets;
+  int way = this->cams[index][tag];
+  priority_pgo[index][way] = priority;
+  bool ret = false;
+  if (victim_entry.valid) {
+    reverse_metatable[victim_entry.data.correlatedAddr].erase(victim_entry.key);
+#ifdef ELABORATE_LOG
+    std::string reason;
+    if (victim_entry.tag != tag) {
+      reason = "CAPACITY";
+    } else {
+      reason = "CONFLICT";
+    }
+    pp->logfile << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " " << victim_entry.data.correlatedAddr << std::endl;
+#endif
+    ret = true;
+  }
+#ifdef ELABORATE_LOG
+  pp->logfile << std::dec << pp->llc_cache->current_cycle() << " ADD " << std::hex << key << " " << data.correlatedAddr << std::endl;
+#endif
+  return ret;
+}

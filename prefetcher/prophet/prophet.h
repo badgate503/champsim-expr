@@ -237,8 +237,8 @@ public:
 
   std::map<uint64_t, uint64_t> prefetched_addr; // <block_addr, trigger pc>
 
-  std::string out_file;
-  std::vector<std::string> logs;
+  std::string log_file_name;
+  std::ofstream logfile;
   bool warmup_complete = false;
 
   std::string toProfilePath(const std::string& full_path)
@@ -276,8 +276,9 @@ public:
     llc_cache = llc;
     benchmark = champsim::global_trace_name;
 
-    out_file = "/mnt/data/lyq/exprlog/prophet/" + toProfilePath(benchmark) + ".txt";
-    cout << out_file << endl;
+    log_file_name = "/mnt/data/lyq/exprlog/prophet/" + toProfilePath(benchmark) + ".txt";
+    cout << log_file_name << endl;
+    logfile.open(log_file_name);
     
     if (!inTraining) {
       std::string trace_path(benchmark);
@@ -296,13 +297,13 @@ public:
       if (num_entries == 0) {
         waysForCache = 16;
         disablePF = true;
-      } else if (num_entries < 4096 * 12 * 1) {
+      } else if (num_entries <= 4096 * 12 * 1) {
         waysForCache = 15;
-      } else if (num_entries < 4096 * 12 * 2) {
+      } else if (num_entries <= 4096 * 12 * 2) {
         waysForCache = 14;
-      } else if (num_entries < 4096 * 12 * 4) {
+      } else if (num_entries <= 4096 * 12 * 4) {
         waysForCache = 12;
-      } else if (num_entries < 4096 * 12 * 8) {
+      } else if (num_entries <= 4096 * 12 * 8) {
         waysForCache = 8;
       } else {
         assert(false && "Error: Incorrectly formatted line.");

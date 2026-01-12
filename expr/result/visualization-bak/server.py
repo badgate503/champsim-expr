@@ -111,10 +111,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(200)
                 if file_path.endswith('.txt'):
                     ctype = 'text/plain; charset=utf-8'
-                elif file_path.endswith('.json'):
-                    ctype = 'application/json'
+                elif file_path.endswith('.png'):
+                    ctype = 'image/png'
                 else:
-                    ctype = 'text/plain; charset=utf-8'
+                    ctype = 'application/octet-stream'
                 self.send_header('Content-Type', ctype)
                 self.end_headers()
                 with open(file_path, 'rb') as f:

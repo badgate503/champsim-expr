@@ -76,29 +76,29 @@ struct TrainEntry {
   bool protect;
 };
 
-struct ProphetMetaTableEntry {
+struct baselineMetaTableEntry {
 
   uint64_t correlatedAddr;
   // int counter;
   bool used;
   // uint64_t pc;
-  ProphetMetaTableEntry() : correlatedAddr(0), used(false) {};
-  ProphetMetaTableEntry(uint64_t addr) : correlatedAddr(addr) {};
+  baselineMetaTableEntry() : correlatedAddr(0), used(false) {};
+  baselineMetaTableEntry(uint64_t addr) : correlatedAddr(addr) {};
 };
 
-class ProphetMetaTable : public LRUSetAssociativeCache<ProphetMetaTableEntry>
+class baselineMetaTable : public LRUSetAssociativeCache<baselineMetaTableEntry>
 {
-  typedef LRUSetAssociativeCache<ProphetMetaTableEntry> Super;
+  typedef LRUSetAssociativeCache<baselineMetaTableEntry> Super;
 
 public:
   std::unordered_map<uint64_t, std::set<uint64_t>> reverse_metatable;
   baseline* pp;
 
-  ProphetMetaTable(int size, int num_ways) : Super(size, num_ways), priority_pgo(num_sets, vector<uint8_t>(num_ways, 0)), pp(nullptr) {}
+  baselineMetaTable(int size, int num_ways) : Super(size, num_ways), priority_pgo(num_sets, vector<uint8_t>(num_ways, 0)), pp(nullptr) {}
 
   void setpp(baseline* p) { pp = p; }
 
-  ProphetMetaTableEntry* find(uint64_t key)
+  baselineMetaTableEntry* find(uint64_t key)
   {
     Entry* entry = Super::find(key);
     if (!entry) {
@@ -111,7 +111,7 @@ public:
       If evict another valid entry: return true!
       else: return false!
   */
-  bool insert(uint64_t key, const ProphetMetaTableEntry& data, uint8_t priority = 0);
+  bool insert(uint64_t key, const baselineMetaTableEntry& data, uint8_t priority = 0);
 
   Entry* erase(uint64_t key) { return Super::erase(key); }
 
@@ -141,24 +141,24 @@ public:
   vector<vector<uint8_t>> priority_pgo;
 };
 
-struct ProphetMRBTableEntry {
+struct baselineMRBTableEntry {
   uint64_t correlatedAddr;
   uint8_t counter;
-  ProphetMRBTableEntry() : correlatedAddr(0), counter(0) {};
-  ProphetMRBTableEntry(uint64_t addr) : correlatedAddr(addr), counter(0) {};
+  baselineMRBTableEntry() : correlatedAddr(0), counter(0) {};
+  baselineMRBTableEntry(uint64_t addr) : correlatedAddr(addr), counter(0) {};
 };
 
-class ProphetMRBTable : public LRUSetAssociativeCache<ProphetMRBTableEntry>
+class baselineMRBTable : public LRUSetAssociativeCache<baselineMRBTableEntry>
 {
-  typedef LRUSetAssociativeCache<ProphetMRBTableEntry> Super;
+  typedef LRUSetAssociativeCache<baselineMRBTableEntry> Super;
 
 public:
-  ProphetMRBTable(int size, int num_ways) : Super(size, num_ways)
+  baselineMRBTable(int size, int num_ways) : Super(size, num_ways)
   {
     // assert(__builtin_popcount(size) == 1);
   }
 
-  ProphetMRBTableEntry* find(uint64_t key)
+  baselineMRBTableEntry* find(uint64_t key)
   {
     Entry* entry = Super::find(key);
     if (!entry) {
@@ -167,7 +167,7 @@ public:
     return &(entry->data);
   }
 
-  void insert(uint64_t key, const ProphetMRBTableEntry& data)
+  void insert(uint64_t key, const baselineMRBTableEntry& data)
   {
     Super::insert(key, data);
     Super::set_mru(key);
@@ -226,9 +226,9 @@ public:
 
   std::map<uint64_t, TrainEntry> trainTable;
 
-  ProphetMetaTable* metaTable = new ProphetMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
+  baselineMetaTable* metaTable = new baselineMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
 
-  ProphetMRBTable* mrbTable = new ProphetMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
+  baselineMRBTable* mrbTable = new baselineMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
 
   std::unordered_map<uint64_t, uint64_t> pcTable; // record the last addr of PCs
 
@@ -238,9 +238,9 @@ public:
 
   std::map<uint64_t, uint64_t> prefetched_addr; // <block_addr, trigger pc>
 
-  std::string out_file;
+  std::string log_file_name;
   std::string hint_file;
-  std::vector<std::string> logs;
+  std::ofstream logfile;
   bool warmup_complete = false;
 
   std::string toProfilePath(const std::string& full_path)
@@ -299,8 +299,8 @@ public:
     return false;
   }
 
-  int issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
-  int issue_mrbtable(ProphetMRBTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
+  int issue_metatable(baselineMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
+  int issue_mrbtable(baselineMRBTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
 
   void invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8_t type, vector<uint64_t>& pref_addr);
 
@@ -330,10 +330,10 @@ public:
   {
     metaTable->setpp(this);
     benchmark = champsim::global_trace_name;
-    out_file = "/mnt/data/lyq/exprlog/baseline/" + toProfilePath(benchmark) + ".txt";
+    log_file_name = "/mnt/data/lyq/exprlog/baseline/" + toProfilePath(benchmark) + ".txt";
+    cout << log_file_name << endl;
+    logfile.open(log_file_name);
     hint_file = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(benchmark) + ".txt";
-
-    cout << out_file << endl;
   }
 
   uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
@@ -343,4 +343,4 @@ public:
   void prefetcher_final_stats();
 };
 
-#endif // __MEM_CACHE_PREFETCH_Prophet_HH__
+#endif // __MEM_CACHE_PREFETCH_baseline_HH__

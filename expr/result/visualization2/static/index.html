@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Champsim Results Visualization</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="main.js"></script>
+</head>
+<body>
+  <header>
+    <h1>结果可视化</h1>
+  </header>
+  <main>
+    <div class="controls">
+      <label>Trace Set:
+        <select id="traceset-select"></select>
+      </label>
+      <label>Metric:
+        <select id="metric-select"></select>
+      </label>
+    </div>
+
+    <div class="chart-wrap">
+      <canvas id="barChart"></canvas>
+    </div>
+  </main>
+  <footer>
+    <small>访问: <code>http://localhost:8000</code></small>
+  </footer>
+</body>
+</html>

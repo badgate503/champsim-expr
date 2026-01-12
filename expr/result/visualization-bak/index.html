@@ -51,10 +51,10 @@
         <canvas id="barChartOther" height="600" style="width:100%"></canvas>
     </div> -->
 
-<!-- <div id="Chart2" style="width:100%;max-width:100%;display:block;">
+<div id="Chart2" style="width:100%;max-width:100%;display:block;">
     <h2 style="text-align:center;">各 Trace IPC</h2>
     <canvas id="ipcChart" height="600" style="width:100%"></canvas>
-</div> -->
+</div>
 
 
 <div hidden id="fileList"></div>
@@ -64,14 +64,26 @@
     <canvas id="flowCanvas" width="1400" height="700"
         style="width:90vw;max-width:1200px;height:700px;border:1px solid #ccc;background:#fff;"></canvas>
     <script>
-
-
-        async function fetchClassificationJson(group = 'baseline') {
-            const resp = await fetch('../data/' + group + '/' + "result.json");
+        async function fetchIPC(setname) {
+            const resp = await fetch('../data/'+setname +'/ipc.txt');
             const text = await resp.text();
-            return text;
-        }
+            console.log(text);
+            const labels = [];
+            const data = [];
 
+            text.split(/\r?\n/).forEach(line => {
+                if (!line.includes(' ')) return;
+                const [name, val] = line.split(' ', 2);
+                const ipc = parseFloat(val.trim());
+                if (!isNaN(ipc)) {
+                    labels.push(name.trim());
+                    data.push(ipc);
+                }
+            });
+            console.log(labels, data);
+
+            return { labels, data };
+        }
         // stack bar 颜色映射
         const reasonColors = {
             'TARGET_FIRST_APPEAR': '#FF6384',
@@ -93,6 +105,9 @@
                 let parsed = null;
                 if (window.allResults && window.allResults[group] && window.allResults[group][filename]) {
                     parsed = window.allResults[group][filename];
+                } else {
+                    const text = await fetchResultData(filename, group);
+                    parsed = parseResultData(text);
                 }
                 const counts = {};
                 (parsed.labels || []).forEach((lab, i) => { counts[lab] = Number((parsed.data && parsed.data[i]) || 0); });
@@ -211,7 +226,7 @@
         let resultFiles = [];
         let resultGroup = 'baseline';
 
-       // 当前流程图 trace 文件名
+        // 当前流程图 trace 文件名
         let flowCurrentFile = null;
 
         // 切换 trace 或初始加载时刷新流程图
@@ -293,8 +308,8 @@
             //console.log(window.allResultsNormalized[group][filename]);
             return window.allResultsNormalized[group][filename];
         }
-        console.warn('Nothing for', group, filename);
-        return;
+        const txt = await fetchResultData(filename, group);
+        return parseResultData(txt);
     }
   
     async function fetchTracelist() {
@@ -334,7 +349,11 @@
             cb.style.margin = '0 6px 0 12px';
             cb.onchange = function () {
                 selectedSets = Array.from(box.querySelectorAll('input[type=checkbox]:checked')).map(c => c.value);
-                renderBarChart(true, window.lastBarGroup || 'baseline');
+                if (window.lastBarFiles) renderBarChart(window.lastBarFiles, true, window.lastBarGroup || 'baseline');
+                if (window.lastOtherFiles) renderOtherBarChart(window.lastOtherFiles, true, window.lastOtherGroup || 'prophet');
+                
+                renderIPCBarChartWithSets(true);
+
             };
             const label = document.createElement('label');
             label.htmlFor = id;
@@ -356,18 +375,24 @@
             let baselineFiles = [];
             if (window.allResultsNormalized && window.allResultsNormalized[g]) {
                 baselineFiles = Object.keys(window.allResultsNormalized[g]);
+            } else {
+                baselineFiles = await fetchResultFiles(g);
             }
+            resultFiles = baselineFiles;
             resultGroup = g;
+            window.lastBarFiles = baselineFiles;
             window.lastBarGroup = g;
-            renderBarChart(false, g);
+            if (baselineFiles && baselineFiles.length) renderBarChart(baselineFiles, false, g);
             // clear other chart
             if (window.barChartOtherObj) { window.barChartOtherObj.destroy(); window.barChartOtherObj = null; }
+            window.lastOtherFiles = [];
+            window.lastOtherGroup = null;
             document.getElementById('resultTitle').textContent = g + ' 结果堆叠条形图';
         };
     }
 
     // 修改 renderBarChart 支持 set 过滤
-    async function renderBarChart(isFilterChange, group = 'baseline') {
+    async function renderBarChart(files, isFilterChange, group = 'baseline') {
         // 读取 tracelist
         let tracelistText = '';
         try {
@@ -385,12 +410,20 @@
         // 只保留 result 里有的 trace
         // 去掉 _breif.txt 后缀再和 tracelist 匹配
         // 支持 _breif.txt、.txt 后缀，忽略大小写
+        const fileMap = {};
+        files.forEach(f => {
+            let key = f;
+            if (key.endsWith('_breif.txt')) key = key.slice(0, -10);
+            else if (key.endsWith('.txt')) key = key.slice(0, -4);
+            key = key.toLowerCase();
+            fileMap[key] = f;
+        });
         // 只保留选中 set
         let filterSet = selectedSets && selectedSets.length ? selectedSets : Object.keys(sets);
         const grouped = [];
         Object.entries(sets).forEach(([set, arr]) => {
             if (!filterSet.includes(set)) return;
-            const traces = arr;
+            const traces = arr.filter(t => fileMap[t.toLowerCase()]);
             if (traces.length) grouped.push({ set, traces });
         });
         // 展平 trace 顺序
@@ -404,7 +437,7 @@
         const allData = [];
         let allLabels = new Set();
         for (const t of orderedTraces) {
-            const f = t;
+            const f = fileMap[t.toLowerCase()];
             try {
                 const parsed = await getParsedFile(f, group);
                 // prefer normalized values when available (for stack proportions)
@@ -468,7 +501,7 @@
             parent.removeChild(oldCanvas);
             const newCanvas = document.createElement('canvas');
             newCanvas.id = 'barChart';
-            newCanvas.height = 1100;
+            newCanvas.height = 800;
             newCanvas.style.width = '100%';
             parent.appendChild(newCanvas);
         }
@@ -498,7 +531,7 @@
                             minRotation: 60
                         }
                     },
-                    y: { stacked: true, max: 1.5 }
+                    y: { stacked: true, max: 1.1 }
                 }
             },
             plugins: [{
@@ -512,7 +545,7 @@
                     ctx.fillStyle = '#333';
                     setLabels.forEach(({ name, pos }) => {
                         const x = scales.x.getPixelForValue(pos - 0.5);
-                        ctx.fillText(name, x, chartArea.bottom - (1100-300));
+                        ctx.fillText(name, x, chartArea.bottom - 550);
                     });
                     // 手动画分隔线
                     ctx.strokeStyle = '#888';
@@ -536,13 +569,16 @@
             if (points && points.length > 0) {
                 const idx = points[0].index;
                 const t = allData[idx].file;
-                const f = t;
+                const f = fileMap[t.toLowerCase()];
                 getParsedFile(f, group).then(parsed => {
                     
                 });
+                highlightIPCBar(t);
+                loadFile(t, group);
             }
 
         };
+        window.lastBarFiles = files;
         window.lastBarGroup = group;
     }
 
@@ -558,27 +594,147 @@
         chart.data.datasets[0].backgroundColor[idx] = '#FF5722';
         chart.update();
     }
-  
-    async function main() {
-        let groups = await fetchResultGroups();
-        const sel = document.getElementById('groupSelector');
-        
-        initGroupSelector(window.lastOtherGroup || sel && sel.value);
-        const fileListDiv = document.getElementById('fileList');
-        console.log('Available result groups:', groups);
-        let allRes = {};
-        let new_group = [];
-        for (const g of groups) { 
-            try { 
-                const res = JSON.parse(await fetchClassificationJson(g));
-                allRes[g] = res;
-                new_group.push(g);
-            } catch (e) {
-                
-                console.warn('Failed to load/parse group', g, e);
-            }
+    async function renderIPCBarChartWithSets(isFilterChange = false, ) {
+
+        // 1. 读取 IPC 数据
+        console.log(window)
+        const { labels: allTraces, data: allIPC } = await fetchIPC(window.lastBarGroup || 'baseline');
+        if (!allTraces.length) return;
+
+        // 2. 缓存原始 IPC
+        if (!window.lastIPCData || !isFilterChange) {
+            window.lastIPCData = { traces: allTraces, ipc: allIPC };
         }
-        groups = new_group;
+
+        const traces = window.lastIPCData.traces;
+        const ipc = window.lastIPCData.ipc;
+
+        // 3. 读取 tracelist
+        const tracelistText = await fetchTracelist();
+        const sets = parseTracelist(tracelistText);
+
+        // 4. 构建 trace -> set 映射
+        const trace2set = {};
+        Object.entries(sets).forEach(([set, arr]) => arr.forEach(t => trace2set[t] = set));
+
+        // 5. 获取选中 set
+        const filterSet = selectedSets && selectedSets.length ? selectedSets : Object.keys(sets);
+
+        // 6. 对每个 set 顺序 flatten traces
+        const grouped = [];
+        filterSet.forEach(setName => {
+            const tracesInSet = sets[setName].filter(t => {
+                const idx = traces.indexOf(t);
+                return idx >= 0; // ipc.txt 中有该 trace
+            });
+            if (tracesInSet.length) grouped.push({ set: setName, traces: tracesInSet });
+        });
+
+        // 7. 按 grouped 顺序生成最终 X 轴和 IPC 数据
+        const orderedTraces = [];
+        const orderedIPC = [];
+        grouped.forEach(g => {
+            g.traces.forEach(t => {
+                const idx = traces.indexOf(t);
+                if (idx >= 0) {
+                    orderedTraces.push(t);
+                    orderedIPC.push(ipc[idx]);
+                }
+            });
+        });
+
+        if (orderedTraces.length === 0) return;
+
+        // 8. 计算分隔线和 set 标签
+        const separators = [];
+        const setLabels = [];
+        let acc = 0;
+        grouped.forEach(g => {
+            if (acc > 0) separators.push(acc - 0.5);
+            setLabels.push({ name: g.set, pos: acc + g.traces.length / 2 });
+            acc += g.traces.length;
+        });
+
+        // 9. 重建 canvas
+        if (window.ipcChartObj) window.ipcChartObj.destroy();
+        const oldCanvas = document.getElementById('ipcChart');
+        if (oldCanvas) {
+            const parent = oldCanvas.parentNode;
+            parent.removeChild(oldCanvas);
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = 'ipcChart';
+            newCanvas.height = 600;
+            newCanvas.style.width = '100%';
+            parent.appendChild(newCanvas);
+        }
+        const ctx = document.getElementById('ipcChart').getContext('2d');
+
+        // 10. 绘制 Chart
+        window.ipcChartObj = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: orderedTraces,
+                datasets: [{
+                    label: 'IPC',
+                    data: orderedIPC,
+                    backgroundColor: '#42A5F5'
+                }]
+            },
+            options: {
+                responsive: false,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: 'IPC per Trace' }
+                },
+                scales: {
+                    x: {
+                        stacked: false,
+                        ticks: {
+                            autoSkip: false,
+                            maxRotation: 90,
+                            minRotation: 60
+                        }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        min: 0.8,
+                        title: { display: true, text: 'IPC' }
+                    }
+                }
+            },
+            plugins: [{
+                id: 'setLabelAndSeparatorPlugin',
+                afterDraw: chart => {
+                    const { ctx, chartArea, scales } = chart;
+                    ctx.save();
+                    ctx.font = 'bold 16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = '#333';
+
+                    setLabels.forEach(({ name, pos }) => {
+                        const x = scales.x.getPixelForValue(pos - 0.5);
+                        ctx.fillText(name, x, chartArea.bottom - 350);
+                    });
+
+                    ctx.strokeStyle = '#888';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([6, 6]);
+                    separators.forEach(v => {
+                        const x = scales.x.getPixelForValue(v);
+                        ctx.beginPath();
+                        ctx.moveTo(x, chartArea.top);
+                        ctx.lineTo(x, chartArea.bottom);
+                        ctx.stroke();
+                    });
+                    ctx.setLineDash([]);
+                    ctx.restore();
+                }
+            }]
+        });
+    }
+    async function main() {
+        const groups = await fetchResultGroups();
+        const sel = document.getElementById('groupSelector');
         if (sel) {
             sel.innerHTML = '';
             groups.forEach(g => {
@@ -588,35 +744,55 @@
                 sel.appendChild(opt);
             });
         }
-        console.log('Available groups after filtering:', groups);
-        console.log('All results:', allRes);
+        initGroupSelector(window.lastOtherGroup || sel && sel.value);
+        const fileListDiv = document.getElementById('fileList');
+        let baselineFiles = [];
+        if (window.allResults && window.allResults['baseline']) {
+            baselineFiles = Object.keys(window.allResults['baseline']);
+        } else {
+            baselineFiles = await fetchResultFiles('baseline');
+        }
+        console.log('Available result groups:', groups);
+        console.log('Baseline result files:', baselineFiles);
 
-        window.allResults = allRes;
+        // 遍历 groups，读取每个文件并解析，保存到 window.allResults，同时归一化
+        const allResults = {};
+        for (const g of groups) {
+            try {
+                const files = await fetchResultFiles(g);
+                allResults[g] = {};
+                for (const f of files) {
+                    try {
+                        const txt = await fetchResultData(f, g);
+                        const parsed = parseResultData(txt);
+                        const total = (parsed.data || []).reduce((a, b) => a + b, 0) || 1;
+                        const norm = (parsed.data || []).map(v => v / total);
+                        // store augmented parsed object
+                        allResults[g][f] = { labels: parsed.labels, data: parsed.data, total, norm };
+                    } catch (e) {
+                        console.warn('Failed to load/parse file', g, f, e);
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to list files for group', g, e);
+                allResults[g] = {};
+            }
+        }
+        window.allResults = allResults;
         // 额外提供归一化视图的索引
         window.allResultsNormalized = {};
         Object.entries(allResults).forEach(([g, files]) => {
+
             window.allResultsNormalized[g] = {};
             Object.entries(files).forEach(([f, p]) => {
-                let labels = [];
-                let total = 0;
-                Object.entries(p).forEach(([k, v]) => {
-                    labels.push(k);
-                    total += v;
-                });
-                let norm = labels.map((lab) => {
-                    const val = p[lab] || 0;
-                    return total > 0 ? (val / total) : 0;
-                });
-
-                window.allResultsNormalized[g][f] = { labels: labels, data: norm, total: total };
+                window.allResultsNormalized[g][f] = { labels: p.labels, data: p.norm, total: p.total };
             });
         });
-
         Object.entries(window.allResultsNormalized || {}).forEach(([g, files]) => {
             if (g !== 'baseline') {
                 Object.entries(files || {}).forEach(([f, p]) => {
                     try {
-                        const baselineEntry = (window.allResultsNormalized && window.allResultsNormalized['baseline']) ? window.allResultsNormalized['baseline'][f] : null;
+                        const baselineEntry = (window.allResults && window.allResults['baseline']) ? window.allResults['baseline'][f] : null;
                         const ratio = (baselineEntry && baselineEntry.total) ? (p.total / baselineEntry.total) : 1;
                         //console.log(ratio)
                         const srcArr = Array.isArray(p.data) ? p.data : (Array.isArray(p.norm) ? p.norm : []);
@@ -631,14 +807,35 @@
         });
         console.log(window.allResultsNormalized);
         
-        resultGroup = 'baseline';
-        window.lastBarGroup = 'baseline';
-        
-        renderBarChart(false, 'baseline');
-        refreshFlowGraph("403.gcc-16B", 'baseline');
 
+        // 获取 baseline 和 other (prophet) 文件列表
+        
+        //const otherFiles = await fetchResultFiles('prophet');
+        resultFiles = baselineFiles;
+        resultGroup = 'baseline';
+        window.lastBarFiles = baselineFiles;
+        window.lastBarGroup = 'baseline';
+        // populate group selector dynamically from result/ folders, then initialize
+        
+
+        //fileListDiv.innerHTML = baselineFiles.map(f => `<button onclick="loadFile('${f}')">${f}</button>`).join(' ');
+        if (baselineFiles.length > 0) loadFile(baselineFiles[0], 'baseline');
+        if (baselineFiles.length > 0) renderBarChart(baselineFiles, false, 'baseline');
+
+
+        refreshFlowGraph(undefined, 'baseline');
+        renderIPCBarChartWithSets();
     }
- 
+    async function loadFile(filename, group = 'baseline') {
+        const parsed = await getParsedFile(filename, group);
+        const labels = parsed.labels;
+        const data = parsed.data;
+        // 提取 trace 名（去除 _breif.txt 或 .txt 后缀）
+        let traceName = filename.replace(/_breif\.txt$/i, '').replace(/\.txt$/i, '');
+        // renderPieChart(labels, data, traceName);
+        // 切换流程图（默认 baseline）
+        refreshFlowGraph(traceName, group);
+    }
     main();
 </script>
 </body>

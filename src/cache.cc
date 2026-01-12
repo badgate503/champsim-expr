@@ -287,7 +287,7 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   if(!hit && handle_pkt.type != access_type::PREFETCH) {
     auto matcher = matches_address(handle_pkt.address);
     // check MSHR
-    auto mshr_entry = std::find_if(std::begin(MSHR), std::end(MSHR), matcher);
+    auto mshr_entry = std::find_if(std::begin(MSHR), std::end(MSHR), matcher);  // search for MSHR entry
     if (mshr_entry != MSHR.end()) {
       if (mshr_entry->type == access_type::PREFETCH  || mshr_entry->prefetch_related) {
         // Mark the prefetch as LATE
@@ -308,7 +308,7 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
       }
     }
   }
-
+  
 
 
   if (should_activate_prefetcher(handle_pkt)) {
@@ -392,7 +392,7 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
     if (mshr_entry->type == access_type::PREFETCH && handle_pkt.type != access_type::PREFETCH) {
       // Mark the prefetch as LATE
       if (mshr_entry->prefetch_from_this) {
-
+        impl_prefetcher_late_prefetch(handle_pkt.address, "MSHR");
         ++sim_stats.pf_late; //
         is_late = true;
       }
@@ -401,7 +401,7 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
     // COLLECT STATS
     sim_stats.mshr_merge.increment(std::pair{to_allocate.type, to_allocate.cpu});
 
-    *mshr_entry = mshr_type::merge(*mshr_entry, to_allocate);
+    *mshr_entry = mshr_type::merge(*mshr_entry, to_allocate);  // merge MSHR
   } else {
     if (mshr_full) { // not enough MSHR resource
       return false;  // TODO should we allow prefetches anyway if they will not be filled to this level?
@@ -860,9 +860,16 @@ uint32_t CACHE::impl_prefetcher_cache_fill(champsim::address addr, long set, lon
   return pref_module_pimpl->impl_prefetcher_cache_fill(addr, set, way, prefetch, evicted_addr, metadata_in);
 }
 
+void CACHE::impl_prefetcher_late_prefetch(champsim::address addr, std::string where) const
+{
+  pref_module_pimpl->impl_prefetcher_late_prefetch(addr, where);
+}
+
 void CACHE::impl_prefetcher_cycle_operate() const { pref_module_pimpl->impl_prefetcher_cycle_operate(); }
 
 void CACHE::impl_prefetcher_final_stats() const { pref_module_pimpl->impl_prefetcher_final_stats(); }
+
+
 
 void CACHE::impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) const
 {
