@@ -115,6 +115,11 @@ struct prefetcher : public bound_to<CACHE> {
   static auto cache_operate_member_impl(long) -> std::false_type;
 
   template <typename T, typename... Args>
+  static auto late_prefetch_member_impl(int) -> decltype(std::declval<T>().prefetcher_late_prefetch(std::declval<Args>()...), std::true_type{});
+  template <typename, typename...>
+  static auto late_prefetch_member_impl(long) -> std::false_type;
+
+  template <typename T, typename... Args>
   static auto cache_fill_member_impl(int) -> decltype(std::declval<T>().prefetcher_cache_fill(std::declval<Args>()...), std::true_type{});
   template <typename, typename...>
   static auto cache_fill_member_impl(long) -> std::false_type;
@@ -146,6 +151,9 @@ struct prefetcher : public bound_to<CACHE> {
 
   template <typename T, typename... Args>
   constexpr static bool has_cache_operate = decltype(cache_operate_member_impl<T, Args...>(0))::value;
+
+  template <typename T, typename... Args>
+  constexpr static bool has_late_prefetch = decltype(late_prefetch_member_impl<T, Args...>(0))::value;
 
   template <typename T, typename... Args>
   constexpr static bool has_cache_fill = decltype(cache_fill_member_impl<T, Args...>(0))::value;

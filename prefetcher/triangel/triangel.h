@@ -47,6 +47,60 @@ using namespace std;
 
 enum ReplacementPolicy { LRU, FIFO };
 
+class SatCounter
+{
+public:
+  uint64_t value;
+  uint64_t max;
+  SatCounter(uint64_t bits, uint64_t init_value = 0)
+  {
+    value = init_value;
+    max = (1 << bits) - 1;
+  }
+
+  SatCounter():value(0),max(0){
+
+  }
+
+  void set(uint64_t val) {
+    value = val;
+  }
+
+  void increment(uint64_t by = 1)
+  {
+    if (max == 0)
+      assert(false && "SatCounter not initialized");
+    if (value + by <= max)
+      value += by;
+    
+  }
+
+  void decrement(uint64_t by = 1)
+  {
+    if (max == 0)
+      assert(false && "SatCounter not initialized");
+    if (value >= by)
+      value -= by;
+  }
+  bool isMax() {
+    if (max == 0)
+      assert(false && "SatCounter not initialized");
+    return value == max;
+  }
+  bool isMin() {
+    if (max == 0)
+      assert(false && "SatCounter not initialized");
+    return value == 0;
+  }
+  bool operator>(const uint64_t& other) { return value > other; }
+  bool operator<(const uint64_t& other) { return value < other; }
+  bool operator>=(const uint64_t& other) { return value >= other; }
+  bool operator<=(const uint64_t& other) { return value <= other; }
+  bool operator==(const uint64_t& other) { return value == other; }
+  bool operator!=(const uint64_t& other) { return value != other; }
+  void operator=(const uint64_t& other) { value = other; }
+};
+
 template <class T>
 class Cacheway
 {
@@ -282,6 +336,134 @@ public:
   }
 };
 
+template <class T>
+class RRIPCacheway{
+  // data, RRPV
+  std::unordered_map<uint64_t, std::pair<T, SatCounter>> cache; // key -> T
+  std::string owner;
+  int capacity;
+  int count;
+  void aging() {
+    for (auto& [k, v] : cache) {
+      v.second.increment();
+    }
+  }
+public:
+  RRIPCacheway(int capacity, const std::string& owner = "unknown"):capacity(capacity), owner(owner), count(0) {}
+
+  ~RRIPCacheway() {}
+
+  int decrementCapacity(int n){
+    if(n <= 0) return 0;
+    if(capacity - n >= count) { // no eviction
+      capacity -= n;
+      return 0;
+    } else {
+      int to_evict = count - (capacity - n);
+      int total_evicted = 0;
+      for (int i = 0; i < to_evict; ++i) {
+        uint64_t victim = 0;
+        bool find = false;
+        while (true) {
+          for (auto& [k, v] : cache) {
+            if (v.second.isMax()) {
+              victim = k;
+              find = true;
+            } 
+          }
+          if(find) break;
+          aging();
+        }
+        cache.erase(victim);
+        count--;
+        total_evicted++;
+      }
+      capacity -= n;
+      return total_evicted;
+    }
+  }
+
+  void incrementCapacity(int n){
+    if (n == 0)
+      return;
+    capacity += n;
+  }
+
+  T* get(uint64_t key) {
+    if (cache.find(key) == cache.end()) {
+      return nullptr;
+    }
+    cache[key].second.set(0);
+    return &(cache[key].first);
+  }
+
+  T* find(uint64_t key) {
+    if(cache.find(key) == cache.end()) {
+      return nullptr;
+    }
+    return &(cache[key].first);
+  }
+
+  void touch(uint64_t key) {
+    if (cache.find(key) == cache.end()) {
+      return;
+    }
+    cache[key].second.set(0);
+  };
+
+  uint64_t get_victim_key(uint64_t key) {
+    if (find(key)) {
+      return key;
+    } else if (count + 1 > capacity) {
+      while (true) {
+        for (auto& [k, v] : cache) {
+          if (v.second.isMax()) {
+            return k;
+          }
+        }
+        aging();
+      }
+    } else {
+      return 0;
+    }
+  }
+
+  bool set(uint64_t key, T value) {
+    uint64_t victim_key = get_victim_key(key);// updates rrpv
+    if(victim_key) {
+      if(victim_key == key) {
+        cache[victim_key].second.set(0); // reset
+        cache[victim_key].first = value;
+      } else {
+        cache.erase(victim_key);
+        cache.emplace(key,std::make_pair(value, SatCounter(3, 6)));
+      }
+      return true;
+    } else {
+      cache.emplace(key,std::make_pair(value, SatCounter(3, 6)));
+      count++;
+    }
+    return false;
+  };
+
+  T* get_victim(uint64_t key) {
+    if(T* t = find(key)) {
+      return t;
+    } else if(count+1 > capacity) {
+      while (true) {
+        for (auto& [k, v] : cache) {
+          if (v.second.isMax()) {
+            return &(v.first);
+          }
+        }
+        aging();
+      }
+    } else {
+      return nullptr;
+    }
+  };
+};
+
 template <typename T>
 class AssociativeCache
 {
@@ -349,38 +531,6 @@ public:
   }
 };
 
-class SatCounter
-{
-public:
-  uint64_t value;
-  uint64_t max;
-  SatCounter(uint64_t bits, uint64_t init_value = 0)
-  {
-    value = init_value;
-    max = (1 << bits) - 1;
-  }
-
-  void increment(uint64_t by = 1)
-  {
-    if (value + by <= max)
-      value += by;
-  }
-
-  void decrement(uint64_t by = 1)
-  {
-    if (value >= by)
-      value -= by;
-  }
-  bool isMax() { return value == max; }
-  bool isMin() { return value == 0; }
-  bool operator>(const uint64_t& other) { return value > other; }
-  bool operator<(const uint64_t& other) { return value < other; }
-  bool operator>=(const uint64_t& other) { return value >= other; }
-  bool operator<=(const uint64_t& other) { return value <= other; }
-  bool operator==(const uint64_t& other) { return value == other; }
-  bool operator!=(const uint64_t& other) { return value != other; }
-  void operator=(const uint64_t& other) { value = other; }
-};
 
 struct TrainingUnitEntry {
   uint64_t key;
@@ -637,7 +787,7 @@ public:
 class Metadata
 {
 public:
-  std::vector<Cacheway<MetadataEntry>*> table;
+  std::vector<RRIPCacheway<MetadataEntry>*> table;
   uint64_t cache_way_allocated;
   uint64_t count;
 
@@ -646,9 +796,11 @@ public:
   {
     table.reserve(set);
     for (size_t i = 0; i < set; i++) {
-      table.push_back(new Cacheway<MetadataEntry>(ways, LRU, "MD"));
+      table.push_back(new RRIPCacheway<MetadataEntry>(ways, "MD"));
     }
   }
+
+  
 
   ~Metadata()
   {
@@ -724,7 +876,7 @@ void removeDuplicates(std::vector<T>& vec)
 {
   std::sort(vec.begin(), vec.end());
   auto last = std::unique(vec.begin(), vec.end());
-  vec.erase(last, vec.end());
+  vec.erase(last, vec.end()); 
 }
 
 class triangel : public champsim::modules::prefetcher

@@ -295,12 +295,6 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
 
       }
     }
-    // check downstream PQ
-    if (was_prefetched == "NO" && lower_level != nullptr) {
-      if (std::find_if(std::begin(lower_level->PQ), std::end(lower_level->PQ), matcher) != lower_level->PQ.end()) {
-        was_prefetched = "L3PQ";
-      }
-    }
     // check internal prefetch queue
     if (was_prefetched == "NO") {
       if (std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matcher) != internal_PQ.end()) {
@@ -392,7 +386,7 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
     if (mshr_entry->type == access_type::PREFETCH && handle_pkt.type != access_type::PREFETCH) {
       // Mark the prefetch as LATE
       if (mshr_entry->prefetch_from_this) {
-        impl_prefetcher_late_prefetch(handle_pkt.address, "MSHR");
+        impl_prefetcher_late_prefetch(handle_pkt.address, handle_pkt.ip, "MSHR");
         ++sim_stats.pf_late; //
         is_late = true;
       }
@@ -636,6 +630,13 @@ bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint3
     return false;
   }
 
+  // lyq: merge prefetches to same line in internal_PQ
+  auto pf_entry = std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matches_address(pf_addr));
+  if (pf_entry != std::end(internal_PQ)) {
+    // already have a prefetch to same line
+    return false;
+  }
+
   request_type pf_packet;
   pf_packet.type = access_type::PREFETCH;
   pf_packet.pf_metadata = prefetch_metadata;
@@ -860,9 +861,9 @@ uint32_t CACHE::impl_prefetcher_cache_fill(champsim::address addr, long set, lon
   return pref_module_pimpl->impl_prefetcher_cache_fill(addr, set, way, prefetch, evicted_addr, metadata_in);
 }
 
-void CACHE::impl_prefetcher_late_prefetch(champsim::address addr, std::string where) const
+void CACHE::impl_prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where) const
 {
-  pref_module_pimpl->impl_prefetcher_late_prefetch(addr, where);
+  pref_module_pimpl->impl_prefetcher_late_prefetch(addr, ip, where);
 }
 
 void CACHE::impl_prefetcher_cycle_operate() const { pref_module_pimpl->impl_prefetcher_cycle_operate(); }

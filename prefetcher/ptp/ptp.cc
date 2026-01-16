@@ -127,7 +127,8 @@ void ptp::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8
 
     // 3.2 update the pcTable
     pcTable[ip] = block_addr;
-  } else {
+  } 
+  else {
     // last addr = cur addr
     if (!cache_hit) {
       uint64_t triggerIP = 0;

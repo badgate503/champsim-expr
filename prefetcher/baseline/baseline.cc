@@ -288,6 +288,13 @@ void baseline::prefetcher_final_stats()
   f.close();
 }
 
+void baseline::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where)
+{
+#ifdef ELABORATE_LOG
+  logfile << std::dec << llc_cache->current_cycle() << " MSHRPFHIT " << std::hex << (addr.to<uint64_t>() >> LOG2_BLOCK_SIZE) << " " << ip << std::dec<< std::endl;
+#endif
+}
+
 void baseline::prefetcher_cycle_operate() {}
 
 bool baselineMetaTable::insert(uint64_t key, const baselineMetaTableEntry& data, uint8_t priority)

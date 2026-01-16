@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.11
+#!/usr/bin/env python3
 
 # Read log/{prefetcher}/{trace}.log and analyze the cause of each miss -> data/{prefetcher}/{trace}_breif.txt.
 # Read log/{prefetcher}/{trace}.out and calculate ipc -> data/{prefetcher}/ipc.txt
@@ -13,7 +13,7 @@ from tqdm import tqdm
 import time
 import random
 import subprocess
-
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from utils.defs import *
 from utils.get_measure import get_ipc
 
@@ -63,19 +63,23 @@ print(f"Already analyzed {len(already_analyzed)} traces: {already_analyzed}")
 
 
 
-all_counters = {}
+#all_counters = {}
 print(LOG_PATH)
-
+NPROC = 89
+working_queue = []
 for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.txt')):
     
     t = os.path.splitext(os.path.basename(log_file))[0]
     if not args.traces:
         args.traces = []
     if t in already_analyzed and t not in args.traces:
-        print(f"\n> Skipping {CYAN}{t}{END}")
         continue
-    print(f"\n> Analyzing {CYAN}{t}{END}")
-    
+    working_queue.append((t,log_file))
+
+print(f"Analyzing: {' '.join([t for t, _ in working_queue])}")
+
+
+def analyze_one(t, log_file):
     add = 0
     evict = 0
     issue = 0
@@ -91,14 +95,18 @@ for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.txt')):
     #####
     last_addr_is_0 = set()
     last_addr_is_addr = set()
-    print(f"{CYAN}{t}{END}: Reading logs from {YELLOW}{log_file}{END}")
+    real_last = {}
+    #print(f"{CYAN}{t}{END}: Reading logs from {YELLOW}{log_file}{END}")
     with open(log_file) as f:
-        for line in tqdm(f):
+        if args.print:
+            full_log = open(f"{RESULT_PATH}/data/{args.prefetcher}/{t}_full.txt", "w")
+        for line in f:
             lst = line.strip().split(" ")
             if lst[1] == "HIT":
                 addr = int(lst[2], 16)
                 ip = int(lst[3], 16)
-                last_addr = int(lst[4], 16)
+                #last_addr = int(lst[4], 16) # from pcTable
+                last_addr = real_last.get(ip) if real_last.get(ip) is not None else 0 # real last addr
                 triggers = [int(x, 16) for x in lst[5:]]
 
                 #logs.append(hit_log(int(lst[0]), int(lst[2], 16), int(lst[3], 16), int(lst[4],16), [int(x, 16) for x in lst[5:]]))
@@ -110,13 +118,16 @@ for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.txt')):
                     last_addr_is_addr.add(addr)
                 else:
                     last_addr_is_addr.discard(addr)
-
+                if args.print:
+                    full_log.write(f"[{lst[0]:^12}] HIT (PC = {ip:#x}, access = {addr:#x}, last access = {last_addr:#x}, exist triggers: {[f'{x:#x}' for x in triggers]})\n")
+                real_last[ip] = addr
             if lst[1] == "MISS":
                 miss += 1
                 late = lst[2]
                 addr = int(lst[3], 16)
                 ip = int(lst[4], 16)
-                last_addr = int(lst[5], 16)
+                #last_addr = int(lst[5], 16) # from pcTable
+                last_addr = real_last.get(ip) if real_last.get(ip) is not None else 0 # real last addr
                 triggers = [int(x, 16) for x in lst[6:]]
 
                 if addr not in misses:
@@ -153,8 +164,11 @@ for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.txt')):
                     last_addr_is_addr.add(addr)
                 else:
                     last_addr_is_addr.discard(addr)
+                real_last[ip] = addr
                 ####
                 #logs.append(miss_log(int(lst[0]), lst[2], int(lst[3], 16), int(lst[4], 16), int(lst[5],16), [int(x, 16) for x in lst[6:]]))
+                if args.print:
+                    full_log.write(f"[{lst[0]:^12}] MISS ({cause.name}, PC = {ip:#x}, access = {addr:#x}, last access = {last_addr:#x}, exist triggers: {[f'{x:#x}' for x in triggers]})\n")
             elif lst[1] == "ADD":
                 add+=1
                 target = int(lst[3],16)
@@ -162,6 +176,8 @@ for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.txt')):
                 entries = md_targets.setdefault(target, {})
                 entries[trigger] = "exist"
                 #logs.append(add_log(int(lst[0]), int(lst[2],16), int(lst[3],16)))
+                if args.print:
+                    full_log.write(f"[{lst[0]:^12}] ADD ({trigger:#x} -> {target:#x})\n")
             elif lst[1] == "EVICT":
                 evict += 1
                 trigger = int(lst[3],16)
@@ -170,109 +186,39 @@ for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.txt')):
                 entries = md_targets.get(target)
                 entries[trigger] = reason
                 #logs.append(evict_log(int(lst[0]), lst[2], int(lst[3],16), int(lst[4],16)))
+                if args.print:
+                    full_log.write(f"[{lst[0]:^12}] EVICT ({trigger:#x} -> {target:#x}, {reason})\n")
             elif lst[0] == "WARMUP":
                 warmed = True
-            # elif lst[1] == "ISSUE":
-            #     issue += 1
-            #     logs.append(issue_log(int(lst[0]), lst[2], int(lst[3],16), int(lst[4],16), int(lst[5],16)))
+                if args.print:
+                    full_log.write(f"WARMUP DONE\n")
+            elif lst[1] == "ISSUE":
+                if args.print:
+                    full_log.write(f"[{lst[0]:^12}] ISSUE ({lst[2]}, PC = {int(lst[3],16):#x}, trigger = {int(lst[4],16):#x}: issue {int(lst[5],16):#x})\n")
     
-
-    print(f"{CYAN}{t}{END}: Miss: {miss}, Add: {add}, Evict: {evict}")
-
-    
-    # ####
-    # for l in tqdm(logs):
-    #     match l:
-    #         case miss_log():
-    #             if l.addr not in misses:
-    #                 misses.add(l.addr)
-    #                 cause = miss_cause.TARGET_FIRST_APPEAR
-    #             elif l.late != "NO":
-    #                 cause = miss_cause.PF_TOO_LATE
-    #             else:
-    #                 entries = md_targets.get(l.addr)
-    #                 if entries:
-    #                     if l.last_addr in entries.keys():   # YES
-    #                         if entries[l.last_addr] == "exist":
-    #                             cause = miss_cause.PF_TOO_EARLY
-    #                         elif entries[l.last_addr] == "CAPACITY":
-    #                             cause = miss_cause.EVICTED_MD_CAPACITY
-    #                         elif entries[l.last_addr] == "CONFLICT":
-    #                             cause = miss_cause.EVICTED_MD_CONFLICT
-    #                     else:
-    #                         cause = miss_cause.NO_TRIGGER
-    #                 else:
-    #                     if l.addr in last_addr_is_0:
-    #                         cause = miss_cause.NO_MD_LAST_ADDR_0
-    #                     elif l.addr in last_addr_is_addr:
-    #                         cause = miss_cause.NO_MD_LAST_ADDR_REPEAT
-    #             l.mcause = cause
-    #             if warmed:
-    #                 counters[cause.name] += 1
-
-    #             ####
-    #             if l.last_addr == 0:
-    #                 last_addr_is_0.add(l.addr)
-    #             else:
-    #                 last_addr_is_0.discard(l.addr)
-    #             if l.last_addr == l.addr:
-    #                 last_addr_is_addr.add(l.addr)
-    #             else:
-    #                 last_addr_is_addr.discard(l.addr)
-    #             ####
-    #         case hit_log():
-    #             if l.last_addr == 0:
-    #                 last_addr_is_0.add(l.addr)
-    #             else:
-    #                 last_addr_is_0.discard(l.addr)
-    #             if l.last_addr == l.addr:
-    #                 last_addr_is_addr.add(l.addr)
-    #             else:
-    #                 last_addr_is_addr.discard(l.addr)
-
-    #         case add_log():
-    #             entries = md_targets.setdefault(l.target, {})
-    #             entries[l.trigger] = "exist"
-                        
-    #         case evict_log():
-    #             entries = md_targets.get(l.target)
-    #             entries[l.trigger] = l.reason
-
-    #         case warmup_done_log():
-    #             warmed = True
-    s = sum(counters.values())
-    # Build rows and sort by percentage descending
-    rows = []
-    for u, v in counters.items():
-        pct = (v / s * 100.0) if s > 0 else 0.0
-        rows.append((u, v, pct))
-    rows.sort(key=lambda x: x[2], reverse=True)
-
-    # Prepare percentage strings with two decimals, then align decimal points
-    pct_strs = [f"{r[2]:.2f}" for r in rows]
-    # find max integer part length for alignment
-    int_parts = [s_.split(".")[0].lstrip("-") for s_ in pct_strs]
-    max_int_len = max((len(x) for x in int_parts), default=1)
-    print(f"\nResult of {CYAN}{t}{END}: ")
-    for (name, count, pct), pct_s in zip(rows, pct_strs):
-        int_part, frac_part = pct_s.split('.')
-        int_part_padded = int_part.rjust(max_int_len)
-        pct_display = f"{int_part_padded}.{frac_part}%"
-        print(f"{name:<30}: {pct_display}")
-
-
-    # if args.print:
-    #     with open(f"{RESULT_PATH}/data/{args.prefetcher}/{t}_full.txt", "w") as f:
-    #         for l in logs:
-    #             f.write(l.__str__())
-    #             f.write("\n")
     with open(f"{RESULT_PATH}/data/{args.prefetcher}/{t}_breif.txt", "w") as f:
         for k,v in counters.items():
             f.write(f"{k} {v}\n")
-    all_counters.update({t: counters})
-    print(f"\n{CYAN}{t}{END}: Done.")
+    #print(f"\n{CYAN}{t}{END}: Done.")
 
-result = {}
+max_workers = min(64,len(working_queue))
+if max_workers != 0:
+    with ProcessPoolExecutor(max_workers = max_workers) as executor:
+        futures = [executor.submit(analyze_one, x, y) for x, y in working_queue]
+        for f in tqdm(as_completed(futures), total=len(futures)):
+            pass
+    print("Done.")
+
+
+trace_all=[]
+with open("./utils/tracelist", "r") as f:
+    lines = f.readlines()
+    for line in lines:
+        traces = line.split(":", 1)[1].strip().split()
+        trace_all.extend(traces)
+print(trace_all)
+
+result = {a:{} for a in trace_all}
 n = 0
 for path in glob.glob(f"./result/data/{args.prefetcher}/*.txt"):
 
@@ -295,8 +241,5 @@ with open(f"./result/data/{args.prefetcher}/result.json", "w") as f:
     json.dump(result, f, indent=2)
 
 print("Generated result.json, total analyzed traces:", n)
-# if args.json:
-#     json_result = json.dumps(all_counters)
-#     with open(f"{RESULT_PATH}/data/{args.prefetcher}/result.json", "w") as f:
-#         f.write(json_result)
+
 

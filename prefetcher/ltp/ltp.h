@@ -1,8 +1,9 @@
-#ifndef BASELINE
-#define BASELINE
+#ifndef LTP
+#define LTP
 
 #include <cassert>
 #include <cstdint>
+#include <deque>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -17,7 +18,6 @@
 #include "cache.h"
 #include "champsim.h"
 
-// #define META_TABLE_SIZE 196608
 #define META_TABLE_SIZE 393216
 #define META_TABLE_ASSOC 96
 #define MRB_TABLE_SIZE 65526
@@ -25,10 +25,17 @@
 #define MRB_MAX_COUNTER 3
 #define GLOBAL_DEGREE 1 // metatable & mrb_table has this degree
 
-#define IS_TRAIN true
 #define ENABLE_MRB false
+#define ENABLE_PGO false
 
-class baseline;
+#define GPQ_SIZE 4
+#define LATE_THRESHOLD 0.125
+#define MAX_DEGREE 4
+#define HIGH_ACCURACY_THRESHOLD 0.5
+#define LOW_ACCURACY_THRESHOLD 0.125
+#define LOW_COVERAGE_THRESHOLD 0.125
+
+class ltp;
 
 struct SingleMetaEntry {
   uint64_t correlatedAddr;
@@ -76,29 +83,29 @@ struct TrainEntry {
   bool protect;
 };
 
-struct baselineMetaTableEntry {
+struct ltpMetaTableEntry {
 
   uint64_t correlatedAddr;
   // int counter;
   bool used;
   // uint64_t pc;
-  baselineMetaTableEntry() : correlatedAddr(0), used(false) {};
-  baselineMetaTableEntry(uint64_t addr) : correlatedAddr(addr) {};
+  ltpMetaTableEntry() : correlatedAddr(0), used(false) {};
+  ltpMetaTableEntry(uint64_t addr) : correlatedAddr(addr) {};
 };
 
-class baselineMetaTable : public LRUSetAssociativeCache<baselineMetaTableEntry>
+class ltpMetaTable : public LRUSetAssociativeCache<ltpMetaTableEntry>
 {
-  typedef LRUSetAssociativeCache<baselineMetaTableEntry> Super;
+  typedef LRUSetAssociativeCache<ltpMetaTableEntry> Super;
 
 public:
   std::unordered_map<uint64_t, std::set<uint64_t>> reverse_metatable;
-  baseline* pp;
+  ltp* pp;
 
-  baselineMetaTable(int size, int num_ways) : Super(size, num_ways), priority_pgo(num_sets, vector<uint8_t>(num_ways, 0)), pp(nullptr) {}
+  ltpMetaTable(int size, int num_ways) : Super(size, num_ways), priority_pgo(num_sets, vector<uint8_t>(num_ways, 0)) {}
 
-  void setpp(baseline* p) { pp = p; }
+  void setpp(ltp* p) { pp = p; }
 
-  baselineMetaTableEntry* find(uint64_t key)
+  ltpMetaTableEntry* find(uint64_t key)
   {
     Entry* entry = Super::find(key);
     if (!entry) {
@@ -111,8 +118,7 @@ public:
       If evict another valid entry: return true!
       else: return false!
   */
-  bool insert(uint64_t key, const baselineMetaTableEntry& data, uint8_t priority = 0);
-
+  bool insert(uint64_t key, const ltpMetaTableEntry& data, uint8_t priority = 0);
   Entry* erase(uint64_t key) { return Super::erase(key); }
 
   /* @override */
@@ -141,24 +147,24 @@ public:
   vector<vector<uint8_t>> priority_pgo;
 };
 
-struct baselineMRBTableEntry {
+struct ltpMRBTableEntry {
   uint64_t correlatedAddr;
   uint8_t counter;
-  baselineMRBTableEntry() : correlatedAddr(0), counter(0) {};
-  baselineMRBTableEntry(uint64_t addr) : correlatedAddr(addr), counter(0) {};
+  ltpMRBTableEntry() : correlatedAddr(0), counter(0) {};
+  ltpMRBTableEntry(uint64_t addr) : correlatedAddr(addr), counter(0) {};
 };
 
-class baselineMRBTable : public LRUSetAssociativeCache<baselineMRBTableEntry>
+class ltpMRBTable : public LRUSetAssociativeCache<ltpMRBTableEntry>
 {
-  typedef LRUSetAssociativeCache<baselineMRBTableEntry> Super;
+  typedef LRUSetAssociativeCache<ltpMRBTableEntry> Super;
 
 public:
-  baselineMRBTable(int size, int num_ways) : Super(size, num_ways)
+  ltpMRBTable(int size, int num_ways) : Super(size, num_ways)
   {
     // assert(__builtin_popcount(size) == 1);
   }
 
-  baselineMRBTableEntry* find(uint64_t key)
+  ltpMRBTableEntry* find(uint64_t key)
   {
     Entry* entry = Super::find(key);
     if (!entry) {
@@ -167,7 +173,7 @@ public:
     return &(entry->data);
   }
 
-  void insert(uint64_t key, const baselineMRBTableEntry& data)
+  void insert(uint64_t key, const ltpMRBTableEntry& data)
   {
     Super::insert(key, data);
     Super::set_mru(key);
@@ -199,13 +205,34 @@ public:
   }
 };
 
-class baseline : public champsim::modules::prefetcher
+struct PCTableEntry {
+  uint64_t lastAddr;
+  uint64_t lastlastAddr;
+  bool lookahead;
+  uint64_t degree;
+  uint64_t latePrefetchCount;
+  uint64_t usefulPrefetchCount;
+  uint64_t accuratePrefetchCount;
+  uint64_t issuedPrefetchCount;
+  uint64_t missCount;
+  uint64_t accessCount;
+
+  PCTableEntry(uint64_t _lastAddr = 0, bool cache_hit = false) : lastAddr(_lastAddr), lastlastAddr(0), lookahead(false), degree(GLOBAL_DEGREE), latePrefetchCount(0), usefulPrefetchCount(0), accuratePrefetchCount(0), issuedPrefetchCount(0), missCount(cache_hit ? 0 : 1), accessCount(1) {};
+};
+
+struct GlobalPCEntry {
+  uint64_t ip;
+  bool hit;
+  uint64_t timestamp;
+};
+
+class ltp : public champsim::modules::prefetcher
 {
 public:
   // BaseTags* cachetags;
   CACHE* llc_cache = NULL;
   int debug_level = 0;
-  bool inTraining = IS_TRAIN;
+  bool enablePGO = ENABLE_PGO;
   bool enableMRB = ENABLE_MRB;
   int globalDegree = GLOBAL_DEGREE;
   bool disablePF = false;
@@ -226,11 +253,12 @@ public:
 
   std::map<uint64_t, TrainEntry> trainTable;
 
-  baselineMetaTable* metaTable = new baselineMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
+  ltpMetaTable* metaTable;
 
-  baselineMRBTable* mrbTable = new baselineMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
+  ltpMRBTable* mrbTable = new ltpMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
 
-  std::unordered_map<uint64_t, uint64_t> pcTable; // record the last addr of PCs
+  // std::unordered_map<uint64_t, uint64_t> pcTable; // record the last addr of PCs
+  std::unordered_map<uint64_t, PCTableEntry> pcTable; 
 
   std::set<uint64_t> metaUsedPool;
 
@@ -238,8 +266,12 @@ public:
 
   std::map<uint64_t, uint64_t> prefetched_addr; // <block_addr, trigger pc>
 
+#ifdef PC_TRIGGER_PREFETCH  
+  std::deque<GlobalPCEntry> GPQ;
+  std::map<uint64_t, uint64_t> GPMetaTable; // <trigger pc, block_addr>
+#endif
+
   std::string log_file_name;
-  std::string hint_file;
   std::ofstream logfile;
   bool warmup_complete = false;
 
@@ -270,12 +302,77 @@ public:
     size_t second_last_dot = file_part.rfind('.', last_dot - 1);
     std::string base_name = (second_last_dot == std::string::npos) ? file_part.substr(0, last_dot) : file_part.substr(0, second_last_dot);
 
-    // std::string profile_path = "/mnt/data/lyq/Kairos2/expr/log/baseline/"+ base_name + ".txt";
+    // std::string profile_path = "/mnt/data/lyq/Kairos/expr/hint/"+ base_name + ".txt";
     return base_name;
   }
+  void set_llc_reference(CACHE* llc)
+  {
+    llc_cache = llc;
+    benchmark = champsim::global_trace_name;
 
-  void set_llc_reference(CACHE* llc) { llc_cache = llc; }
+    log_file_name = "/mnt/data/lyq/exprlog/ltp/" + toProfilePath(benchmark) + ".txt";
+    cout << log_file_name << endl;
+    logfile.open(log_file_name);
 
+    if (!ENABLE_PGO) {
+      metaTable = new ltpMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
+      metaTable->setpp(this);
+    } else {
+      std::string trace_path(benchmark);
+      std::string file_name = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(trace_path) + ".txt";
+      // std::string file_name = "profile.txt";
+      std::ifstream pc_file(file_name);
+      if (!pc_file) {
+        std::cerr << "Unable to open: " << file_name << endl;
+        assert(false);
+      }
+
+      std::string line;
+      std::getline(pc_file, line);
+      int num_entries = std::stoi(line);
+
+      if (num_entries == 0) {
+        waysForCache = 16;
+        disablePF = true;
+      } else if (num_entries < 4096 * 12 * 1) {
+        waysForCache = 15;
+      } else if (num_entries < 4096 * 12 * 2) {
+        waysForCache = 14;
+      } else if (num_entries < 4096 * 12 * 4) {
+        waysForCache = 12;
+      } else if (num_entries < 4096 * 12 * 8) {
+        waysForCache = 8;
+      } else {
+        assert(false && "Error: Incorrectly formatted line.");
+      }
+
+      if (!disablePF) {
+        metaTable = new ltpMetaTable(META_TABLE_SIZE, (16 - waysForCache) * 12);
+        metaTable->setpp(this);
+      }
+      llc_cache->set_available_ways(waysForCache);
+      cout << "Alloc " << waysForCache << " for cache" << endl;
+
+      while (std::getline(pc_file, line)) {
+        std::istringstream lineStream(line);
+        std::string PC;
+        std::string priority;
+
+        if (std::getline(lineStream, PC, ',') && std::getline(lineStream, priority, ',')) {
+          // PC and degree are now split into two variables
+          if (std::stoull(priority) == 0)
+            continue;
+          cout << "Add PC=0x" << hex << std::stoull(PC, nullptr, 16) << endl;
+          profileInsertTable.insert(std::stoull(PC, nullptr, 16));
+          profileReplTable[std::stoull(PC, nullptr, 16)] = std::stoull(priority);
+        } else {
+          std::cerr << "Error: Incorrectly formatted line." << endl;
+        }
+      }
+      cout << std::dec;
+      pc_file.close();
+    }
+  }
   void addToUsedPool(uint64_t a)
   {
     if (metaUsedPool.find(a) == metaUsedPool.end()) {
@@ -299,17 +396,15 @@ public:
     return false;
   }
 
-  int issue_metatable(baselineMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
-  int issue_mrbtable(baselineMRBTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
-
-  void invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8_t type, vector<uint64_t>& pref_addr);
+  int issue_metatable(ltpMetaTable* metaTable, uint64_t lookup, uint64_t pc, uint64_t degree, std::vector<uint64_t>& addresses);
+  int issue_mrbtable(ltpMRBTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
 
   void outPrefetcherPGOInfo();
 
   uint64_t get_last(uint64_t ip)
   {
     if (pcTable.find(ip) != pcTable.end()) {
-      return pcTable[ip];
+      return pcTable[ip].lastAddr;
     } else {
       return 0;
     }
@@ -323,20 +418,16 @@ public:
       return std::set<uint64_t>();
     }
   };
-
   using champsim::modules::prefetcher::prefetcher;
 
   void prefetcher_initialize()
   {
-    metaTable->setpp(this);
-    benchmark = champsim::global_trace_name;
-    log_file_name = "/mnt/data/lyq/exprlog/baseline/" + toProfilePath(benchmark) + ".txt";
-    cout << log_file_name << endl;
-    logfile.open(log_file_name);
-    hint_file = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(benchmark) + ".txt";
+    /*
+      --- init in function set_llc_reference! ---
+      --- init in function set_llc_reference! ---
+      --- init in function set_llc_reference! ---
+    */
   }
-
-
   uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
                                     uint32_t metadata_in, std::string latepf);
   uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in);
@@ -345,4 +436,4 @@ public:
   void prefetcher_final_stats();
 };
 
-#endif // __MEM_CACHE_PREFETCH_baseline_HH__
+#endif

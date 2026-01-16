@@ -16,10 +16,11 @@ END = '\033[0m'
 TRACE_LIST = {}
 PF_LIST = [
     "baseline",
-    "triangel",
+    #"triangel",
     "prophet",
     "kairos",
-    "ptp"
+    "ptp",
+    "ltp"
 ]
 METRICS = [
     'IPC',
@@ -126,7 +127,8 @@ def get_measure(path, baseline_result = None):
 
         if baseline_result is not None:
             baseline_ipc = float(baseline_result['IPC'])
-            counters['IPCI'] = f"{(float(ipc) / baseline_ipc)}"
+            if baseline_ipc > 0:
+                counters['IPCI'] = f"{(float(ipc) / baseline_ipc)}"
         else:
             counters['IPCI'] = "1.0"
             counters['L2C_Demand_miss'] = load_l2c['MISS'] + rfo_l2c['MISS']

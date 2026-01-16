@@ -25,19 +25,20 @@ WARM_UP = 50_000_000
 INTERVAL = 200_000_000
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--mode", "-m", choices=["ipc", "missclass"], required=True, help="mode: compile or run")
-parser.add_argument("--compile", "-c", action="store_true", help="do compile champsim")
-parser.add_argument("--debug", "-d", choices=["default", "asan"], help="verbose")
-parser.add_argument("--prefetcher", "-p")
+parser.add_argument("--mode", "-m", choices=["ipc", "missclass"], required=True, help="选择是否输出 miss cause classification 日志")
+parser.add_argument("--compile", "-c", action="store_true", help="是否先对可执行文件进行编译")
+parser.add_argument("--debug", "-d", choices=["default", "asan"], help="选择编译模式，Default 为开启 -g -O0; Asan 为开启 AddressSanitizer")
+parser.add_argument("--prefetcher", "-p" , required=True, help="选用的预取器名称")
 
 
-parser.add_argument("--traces", "-t", nargs="+")
-parser.add_argument("--interval", "-i")
-parser.add_argument("--warmup", "-w")
-parser.add_argument("--auto", "-a", action="store_true", help="auto")
-parser.add_argument("--tracelist", "-l", nargs="*", type=str, help="specify tracelist lines to use")
-parser.add_argument("--output", "-o")
-parser.add_argument("--remain", "-r", action="store_true", help="only run remaining traces (not implemented)")
+parser.add_argument("--traces", "-t", nargs="+", help="指定 trace 文件名单列表")
+parser.add_argument("--interval", "-i", help="指定仿真区间长度（指令数）")
+parser.add_argument("--warmup", "-w", help="指定仿真预热长度（指令数）")
+parser.add_argument("--auto", "-a", action="store_true", help="是否跳过所有交互提示")
+parser.add_argument("--tracelist", "-l", nargs="*", type=str, help="指定某个 trace set（定义在 tracelist 文件中）")
+parser.add_argument("--output", "-o", help="重定向输出目录")
+parser.add_argument("--exename", "-e", help="指定可执行文件名称")
+parser.add_argument("--remain", "-r", action="store_true", help="对于已存在的输出文件的 trace，不重新跑；不指定则会覆盖之前的结果")
 args = parser.parse_args()
 
 extra_cflags=[]
@@ -45,10 +46,11 @@ extra_ldflags=[]
 
 if args.debug != None:
     if args.debug == "default":
-        extra_cflags.append("-g -O0")
+        extra_cflags.extend(["-g", "-O0"])
     elif args.debug == "asan":
-        extra_cflags.append("-fsanitize=address -g -O0")
+        extra_cflags.extend(["-fsanitize=address", "-g", "-O0"])
         extra_ldflags.append("-fsanitize=address")
+
 
 if args.mode == "missclass":
     extra_cflags.append("-DELABORATE_LOG")
@@ -65,6 +67,8 @@ if args.compile:
             data["executable_name"] = f"champsim.{args.prefetcher}.mc"
         else:
             data["executable_name"] = f"champsim.{args.prefetcher}"
+        if args.exename is not None:
+            data["executable_name"] = args.exename
     with open("../champsim_config.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
@@ -77,6 +81,7 @@ if args.compile:
         input()
     os.system("cd .. && make clean")
     os.system(f"cd .. && ./config.sh champsim_config.json && make CXXFLAGS=\"{' '.join(extra_cflags)}\" LDFLAGS=\"{' '.join(extra_ldflags)}\" -j32")
+    os.system(f"cp ../champsim_config.json ../bin/champsim_config_{data['executable_name']}.json")
     
 if not args.traces and not args.tracelist:
     print(f"{RED}No trace assigned. Job done{END}")
@@ -117,8 +122,11 @@ if os.path.isdir(log_dir):
         if fname.endswith(".txt"):
             trace_name = fname[:-4]  # 去掉 .txt
             if trace_name in trace_name_set:
-                trace_name_set.remove(trace_name)
-                print(f"Exclude {RED}{trace_name}{END}")
+                if args.remain:
+                    trace_name_set.remove(trace_name)
+                    print(f"Exclude {RED}{trace_name}{END}")
+                else:
+                    print(f"Overwrite {GREEN}{trace_name}{END}")
 all_trace_list = []
 for root, dirs, files in os.walk(TRACE_PATH):
     for f in files:
@@ -138,7 +146,16 @@ if args.output is not None:
     out_path = os.path.abspath(args.output)
 
 print(f"\n{'='*60}\n")
-print(f"Mode: {CYAN}{args.mode}{END}, Prefetcher: {CYAN}{exe_name}{END}, Warm-up: {WARM_UP}, Interval: {INTERVAL}")
+print(f"Mode: {CYAN}{args.mode}{END}, Warm-up: {CYAN}{WARM_UP}{END}, Interval: {CYAN}{INTERVAL}{END}")
+print(f"Executable: {CYAN}../bin/{exe_name}{END}")
+os.system(f"stat ../bin/{exe_name} | grep 最近更改")
+print("\n===============================================\n")
+with open(f"../bin/champsim_config_{exe_name}.json", "r", encoding="utf-8") as f:
+    data = json.load(f)
+    print(f"L1D Config: {CYAN}{data['L1D']}{END}\n")
+    print(f"L2C Config: {CYAN}{data['L2C']}{END}\n")
+    print(f"LLC Config: {CYAN}{data['LLC']}{END}\n")
+print("\n===============================================\n")
 if args.mode == "missclass":
     print(f"Logs will be saved to {out_path}/ as {YELLOW}.log{END} (Champsim log) and {YELLOW}.txt{END} (Miss cause classification log) files")
 else:
@@ -147,7 +164,7 @@ else:
 if exe_name not in os.listdir("../bin/"):
     print(f"{RED}Error: Executable {exe_name} not found in ../bin/. Please compile first with --compile flag.{END}")
     sys.exit(1)
-print(f"\nTotal traces: {len(all_trace_list)}:{all_trace_list}, proceed?")
+print(f"\nTotal traces: {len(all_trace_list)}, proceed?")
 if not args.auto:
     input("Press Enter to continue...")
 
@@ -158,7 +175,7 @@ if not args.auto:
 
 
 # 并发限制
-MAX_CONCURRENT = 32
+MAX_CONCURRENT = 89
 pending_tasks = list(all_trace_list)
 processes = []  # (process, w, start_time)
 
@@ -172,7 +189,17 @@ def launch_task(w, path):
     #work = ["sleep", "10"]
     os.makedirs(f"{out_path}/", exist_ok=True)
     with open(f"{out_path}/{name}", "w") as f:
+
         f.write(" ".join(work))
+        f.write("\n\n")
+        for conf in data['L1D'].items():
+            f.write(f"L1D_{conf[0]}:{conf[1]}\n")
+        for conf in data['L2C'].items():
+            f.write(f"L2C_{conf[0]}:{conf[1]}\n")
+        for conf in data['LLC'].items():
+            f.write(f"LLC_{conf[0]}:{conf[1]}\n")
+        for conf in data['physical_memory'].items():
+            f.write(f"DRAM_{conf[0]}:{conf[1]}\n")
         f.write("\n")
         process = subprocess.Popen(
             work,
