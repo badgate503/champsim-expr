@@ -282,7 +282,6 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
 
   auto metadata_thru = handle_pkt.pf_metadata;
 
-
   std::string was_prefetched = "NO";
   if(!hit && handle_pkt.type != access_type::PREFETCH) {
     auto matcher = matches_address(handle_pkt.address);
@@ -292,18 +291,17 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
       if (mshr_entry->type == access_type::PREFETCH  || mshr_entry->prefetch_related) {
         // Mark the prefetch as LATE
         was_prefetched = "MSHR";
-
       }
     }
     // check internal prefetch queue
     if (was_prefetched == "NO") {
-      if (std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matcher) != internal_PQ.end()) {
+      auto it = std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matcher);
+      if (it != internal_PQ.end()) {
         was_prefetched = "L2PQ";
+        // internal_PQ.erase(it);
       }
     }
   }
-  
-
 
   if (should_activate_prefetcher(handle_pkt)) {
     metadata_thru = impl_prefetcher_cache_operate(module_address(handle_pkt), handle_pkt.ip, hit, useful_prefetch, handle_pkt.type, metadata_thru, was_prefetched);
@@ -621,12 +619,14 @@ long CACHE::invalidate_entry(champsim::address inval_addr)
   return std::distance(begin, inv_way);
 }
 
-bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata)
+bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata, int* pq_index)
 {
   ++sim_stats.pf_requested;
 
   if (std::size(internal_PQ) >= PQ_SIZE) {
     ++sim_stats.pf_dropped;
+    if (pq_index)
+      *pq_index = -1;
     return false;
   }
 
@@ -634,6 +634,8 @@ bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint3
   auto pf_entry = std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matches_address(pf_addr));
   if (pf_entry != std::end(internal_PQ)) {
     // already have a prefetch to same line
+    if (pq_index)
+      *pq_index = pf_entry - std::begin(internal_PQ);
     return false;
   }
 
@@ -647,6 +649,8 @@ bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint3
   internal_PQ.emplace_back(pf_packet, true, !fill_this_level);
   ++sim_stats.pf_issued;
 
+  if (pq_index)
+    *pq_index = internal_PQ.size() - 1;
   return true;
 }
 

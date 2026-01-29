@@ -16,11 +16,19 @@ END = '\033[0m'
 TRACE_LIST = {}
 PF_LIST = [
     "baseline",
-    #"triangel",
-    "prophet",
-    "kairos",
-    "ptp",
-    "ltp"
+    # "triangel",
+    # "prophet",
+    # "kairos",
+    # "ptp",
+    # "ltp1.0",
+    "ltp1.1",
+    "ltp2.0",
+    # "ltp2.1",
+    # "ltp2.2",
+    "ltp2.3",
+    "ltp3.0",
+    "ltp3.1",
+    # "srtp"，
 ]
 METRICS = [
     'IPC',

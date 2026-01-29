@@ -102,6 +102,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
                 return
+        
+        if path == '/sankeylist':
+            files = [f for f in os.listdir("../sankey") if f.endswith('.html')]
+            
+            # 返回 JSON
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(files).encode('utf-8'))
+            return
 
         # serve files under /result/ from BASE_DIR/result/
         if path.startswith('/data/'):
@@ -124,10 +134,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
                 return
+        
+        if path.startswith('/sankey/'):
+            file_path = os.path.join(BASE_DIR, path.lstrip('/'))
+            print(file_path)
+            if os.path.isfile(file_path):
+                # 发送响应头
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.end_headers()
+
+                # 读取 HTML 并返回
+                with open(file_path, 'rb') as f:
+                    self.wfile.write(f.read())
+                return
+            else:
+                self.send_error(404, "File not found")
+                return
 
         # Serve static files (index.html, etc.)
         if self.path == '/':
             self.path = '/index.html'
+
+        
         return http.server.SimpleHTTPRequestHandler.do_GET(self)
         
 if __name__ == '__main__':

@@ -28,7 +28,7 @@
 #define IS_TRAIN true
 #define ENABLE_MRB false
 
-class baseline;
+class srtp;
 
 struct SingleMetaEntry {
   uint64_t correlatedAddr;
@@ -76,89 +76,70 @@ struct TrainEntry {
   bool protect;
 };
 
-struct baselineMetaTableEntry {
+struct srtpMetaTableEntry {
 
   uint64_t correlatedAddr;
   // int counter;
   bool used;
   // uint64_t pc;
-  baselineMetaTableEntry() : correlatedAddr(0), used(false) {};
-  baselineMetaTableEntry(uint64_t addr) : correlatedAddr(addr) {};
+  srtpMetaTableEntry() : correlatedAddr(0), used(false) {};
+  srtpMetaTableEntry(uint64_t addr) : correlatedAddr(addr) {};
 };
 
-class baselineMetaTable : public LRUSetAssociativeCache<baselineMetaTableEntry>
+class srtpMetaTable : public SRRIPSetAssociativeCache<srtpMetaTableEntry>
 {
-  typedef LRUSetAssociativeCache<baselineMetaTableEntry> Super;
+  typedef SRRIPSetAssociativeCache<srtpMetaTableEntry> Super;
 
 public:
   std::unordered_map<uint64_t, std::set<uint64_t>> reverse_metatable;
-  baseline* pp;
+  srtp* pp;
 
-  baselineMetaTable(int size, int num_ways) : Super(size, num_ways), priority_pgo(num_sets, vector<uint8_t>(num_ways, 0)), pp(nullptr) {}
+  srtpMetaTable(int size, int num_ways) : Super(size, num_ways), pp(nullptr) {}
 
-  void setpp(baseline* p) { pp = p; }
+  void setpp(srtp* p) { pp = p; }
 
-  baselineMetaTableEntry* find(uint64_t key)
+  srtpMetaTableEntry* find(uint64_t key)  // wo touch
   {
     Entry* entry = Super::find(key);
     if (!entry) {
       return nullptr;
     }
     return &(entry->data);
+  }
+
+  void touch(uint64_t key)  // with touch
+  {
+    Super::touch(key);
   }
 
   /*
       If evict another valid entry: return true!
       else: return false!
   */
-  bool insert(uint64_t key, const baselineMetaTableEntry& data, uint8_t priority = 0);
+  bool insert(uint64_t key, const srtpMetaTableEntry& data);
 
   Entry* erase(uint64_t key) { return Super::erase(key); }
 
-  /* @override */
-  int select_victim(uint64_t index)
-  {
-    uint8_t min_priority = 255;
-    uint64_t min_lru = UINT64_MAX;
-    int victim_index = 0;
-    vector<uint8_t>& priority_set = this->priority_pgo[index];
-    vector<uint64_t>& lru_set = this->lru[index];
-    for (size_t i = 0; i < num_ways; i++) {
-      if (min_priority > priority_set[i]) {
-        min_priority = priority_set[i];
-        min_lru = lru_set[i];
-        victim_index = i;
-      } else if (min_priority == priority_set[i]) {
-        if (min_lru < lru_set[i]) {
-          min_lru = lru_set[i];
-          victim_index = i;
-        }
-      }
-    }
-    return victim_index;
-  }
-
-  vector<vector<uint8_t>> priority_pgo;
 };
 
-struct baselineMRBTableEntry {
+struct srtpMRBTableEntry {
   uint64_t correlatedAddr;
   uint8_t counter;
-  baselineMRBTableEntry() : correlatedAddr(0), counter(0) {};
-  baselineMRBTableEntry(uint64_t addr) : correlatedAddr(addr), counter(0) {};
+  srtpMRBTableEntry() : correlatedAddr(0), counter(0) {};
+  srtpMRBTableEntry(uint64_t addr) : correlatedAddr(addr), counter(0) {};
 };
 
-class baselineMRBTable : public LRUSetAssociativeCache<baselineMRBTableEntry>
+class srtpMRBTable : public LRUSetAssociativeCache<srtpMRBTableEntry>
 {
-  typedef LRUSetAssociativeCache<baselineMRBTableEntry> Super;
+  typedef LRUSetAssociativeCache<srtpMRBTableEntry> Super;
 
 public:
-  baselineMRBTable(int size, int num_ways) : Super(size, num_ways)
+  srtpMRBTable(int size, int num_ways) : Super(size, num_ways)
   {
     // assert(__builtin_popcount(size) == 1);
   }
 
-  baselineMRBTableEntry* find(uint64_t key)
+  srtpMRBTableEntry* find(uint64_t key)
   {
     Entry* entry = Super::find(key);
     if (!entry) {
@@ -167,7 +148,7 @@ public:
     return &(entry->data);
   }
 
-  void insert(uint64_t key, const baselineMRBTableEntry& data)
+  void insert(uint64_t key, const srtpMRBTableEntry& data)
   {
     Super::insert(key, data);
     Super::set_mru(key);
@@ -199,9 +180,14 @@ public:
   }
 };
 
-class baseline : public champsim::modules::prefetcher
+class srtp : public champsim::modules::prefetcher
 {
 public:
+
+  uint64_t stats_md_lookups = 0;
+  uint64_t stats_md_hits = 0;
+  uint64_t stats_useful_prefetches = 0;
+
   // BaseTags* cachetags;
   CACHE* llc_cache = NULL;
   int debug_level = 0;
@@ -226,9 +212,9 @@ public:
 
   std::map<uint64_t, TrainEntry> trainTable;
 
-  baselineMetaTable* metaTable = new baselineMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
+  srtpMetaTable* metaTable = new srtpMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
 
-  baselineMRBTable* mrbTable = new baselineMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
+  srtpMRBTable* mrbTable = new srtpMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
 
   std::unordered_map<uint64_t, uint64_t> pcTable; // record the last addr of PCs
 
@@ -270,7 +256,7 @@ public:
     size_t second_last_dot = file_part.rfind('.', last_dot - 1);
     std::string base_name = (second_last_dot == std::string::npos) ? file_part.substr(0, last_dot) : file_part.substr(0, second_last_dot);
 
-    // std::string profile_path = "/mnt/data/lyq/Kairos2/expr/log/baseline/"+ base_name + ".txt";
+    // std::string profile_path = "/mnt/data/lyq/Kairos2/expr/log/srtp/"+ base_name + ".txt";
     return base_name;
   }
 
@@ -299,8 +285,8 @@ public:
     return false;
   }
 
-  int issue_metatable(baselineMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
-  int issue_mrbtable(baselineMRBTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
+  int issue_metatable(srtpMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
+  int issue_mrbtable(srtpMRBTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
 
   void invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8_t type, vector<uint64_t>& pref_addr);
 
@@ -330,7 +316,7 @@ public:
   {
     metaTable->setpp(this);
     benchmark = champsim::global_trace_name;
-    log_file_name = "/mnt/data/lyq/exprlog/baseline/" + toProfilePath(benchmark) + ".txt";
+    log_file_name = "/mnt/data/lyq/exprlog/srtp/" + toProfilePath(benchmark) + ".txt";
     cout << log_file_name << endl;
 #ifdef ELABORATE_LOG
     logfile.open(log_file_name);
@@ -347,4 +333,4 @@ public:
   void prefetcher_final_stats();
 };
 
-#endif // __MEM_CACHE_PREFETCH_baseline_HH__
+#endif // __MEM_CACHE_PREFETCH_srtp_HH__

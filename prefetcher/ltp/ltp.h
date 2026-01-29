@@ -17,6 +17,7 @@
 #include "bakshalipour_framework.h"
 #include "cache.h"
 #include "champsim.h"
+// #include "morton_filter/morton_sample_configs.h"
 
 #define META_TABLE_SIZE 393216
 #define META_TABLE_ASSOC 96
@@ -30,10 +31,9 @@
 
 #define GPQ_SIZE 4
 #define LATE_THRESHOLD 0.125
-#define MAX_DEGREE 4
 #define HIGH_ACCURACY_THRESHOLD 0.5
 #define LOW_ACCURACY_THRESHOLD 0.125
-#define LOW_COVERAGE_THRESHOLD 0.125
+#define PF_FILTER_SIZE 512
 
 class ltp;
 
@@ -210,20 +210,102 @@ struct PCTableEntry {
   uint64_t lastlastAddr;
   bool lookahead;
   uint64_t degree;
+  uint32_t latePrefetchHistory; // bit counter
+  uint32_t coverageHistory;
   uint64_t latePrefetchCount;
-  uint64_t usefulPrefetchCount;
   uint64_t accuratePrefetchCount;
   uint64_t issuedPrefetchCount;
   uint64_t missCount;
-  uint64_t accessCount;
 
-  PCTableEntry(uint64_t _lastAddr = 0, bool cache_hit = false) : lastAddr(_lastAddr), lastlastAddr(0), lookahead(false), degree(GLOBAL_DEGREE), latePrefetchCount(0), usefulPrefetchCount(0), accuratePrefetchCount(0), issuedPrefetchCount(0), missCount(cache_hit ? 0 : 1), accessCount(1) {};
+  PCTableEntry(uint64_t _lastAddr = 0, bool cache_hit = false) : lastAddr(_lastAddr), lastlastAddr(0), lookahead(false), degree(GLOBAL_DEGREE), latePrefetchHistory(0), coverageHistory(0), latePrefetchCount(0), accuratePrefetchCount(0), issuedPrefetchCount(0), missCount(cache_hit ? 0 : 1) {};
+  void shift_counter(){
+    float accuracy = 1.0 * accuratePrefetchCount / issuedPrefetchCount;
+
+    // if (!lookahead && accuracy < 0.05) {
+    //   degree = 0;
+    // }
+    
+    if (degree < 2 && latePrefetchCount > 4 && accuracy > 0.5) {
+      degree += 1;
+    }else  if (degree < 4 && latePrefetchCount > 8 && accuracy > 0.5) {
+      degree += 1;
+    }else if (degree < 6 && latePrefetchCount > 8 && accuracy > 0.75) {
+      degree += 1;
+    }
+
+    if (accuracy < LOW_ACCURACY_THRESHOLD) {
+      lookahead = false;
+      if (degree > 1) {
+        degree -= 1;
+      }
+    }
+
+    latePrefetchCount >>= 1; 
+    accuratePrefetchCount >>= 1;
+    issuedPrefetchCount >>= 1;
+    missCount >>= 1;
+  };
 };
 
 struct GlobalPCEntry {
   uint64_t ip;
   bool hit;
   uint64_t timestamp;
+};
+
+class PF_Filter{
+public:
+  uint64_t size;
+  uint8_t width;
+  vector<uint64_t> table;
+  PF_Filter(int size, int width) : size(size), width(width)
+  {
+    table.resize(size, 0);
+  }
+
+  bool add(uint64_t addr)
+  {
+    uint64_t index = addr % size;
+    uint64_t key = build_key(addr);
+    if (table[index] == key) {
+      return true;
+    } else {
+      table[index] = key;
+      return false;
+    }
+  }
+
+  bool erase(uint64_t addr)
+  {
+    uint64_t index = addr % size;
+    if (table[index] == build_key(addr)) {
+      table[index] = 0;
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  bool find(uint64_t addr)
+  {
+    uint64_t index = addr % size;
+    if (table[index] == build_key(addr)) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  uint64_t build_key(uint64_t addr)
+  {
+    const uint64_t MASK = (1ULL << width) - 1;
+    uint64_t hash = 0;
+    while (addr != 0) {
+      hash ^= (addr & MASK);
+      addr >>= width;
+    }
+    return hash;
+  }
 };
 
 class ltp : public champsim::modules::prefetcher
@@ -257,7 +339,6 @@ public:
 
   ltpMRBTable* mrbTable = new ltpMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
 
-  // std::unordered_map<uint64_t, uint64_t> pcTable; // record the last addr of PCs
   std::unordered_map<uint64_t, PCTableEntry> pcTable; 
 
   std::set<uint64_t> metaUsedPool;
@@ -265,6 +346,12 @@ public:
   std::set<uint64_t> metaInsertedPool;
 
   std::map<uint64_t, uint64_t> prefetched_addr; // <block_addr, trigger pc>
+
+  std::set<uint64_t> no_need_prefetch;
+
+  PF_Filter pf_filter = PF_Filter(PF_FILTER_SIZE, 8);
+
+  // CompressedCuckoo::Morton3_8 mf(8192);
 
 #ifdef PC_TRIGGER_PREFETCH  
   std::deque<GlobalPCEntry> GPQ;

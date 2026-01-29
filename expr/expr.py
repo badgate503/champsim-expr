@@ -36,8 +36,8 @@ parser.add_argument("--interval", "-i", help="指定仿真区间长度（指令�
 parser.add_argument("--warmup", "-w", help="指定仿真预热长度（指令数）")
 parser.add_argument("--auto", "-a", action="store_true", help="是否跳过所有交互提示")
 parser.add_argument("--tracelist", "-l", nargs="*", type=str, help="指定某个 trace set（定义在 tracelist 文件中）")
-parser.add_argument("--output", "-o", help="重定向输出目录")
-parser.add_argument("--exename", "-e", help="指定可执行文件名称")
+parser.add_argument("--output", "-o", help="重定向实验结果输出目录")
+parser.add_argument("--exename", "-e", help="指定编译输出的可执行文件名称")
 parser.add_argument("--remain", "-r", action="store_true", help="对于已存在的输出文件的 trace，不重新跑；不指定则会覆盖之前的结果")
 args = parser.parse_args()
 

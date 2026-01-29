@@ -168,7 +168,7 @@ def analyze_one(t, log_file):
                 ####
                 #logs.append(miss_log(int(lst[0]), lst[2], int(lst[3], 16), int(lst[4], 16), int(lst[5],16), [int(x, 16) for x in lst[6:]]))
                 if args.print:
-                    full_log.write(f"[{lst[0]:^12}] MISS ({cause.name}, PC = {ip:#x}, access = {addr:#x}, last access = {last_addr:#x}, exist triggers: {[f'{x:#x}' for x in triggers]})\n")
+                    full_log.write(f"[{lst[0]:^12}] MISS ({cause.name}, {late}, PC = {ip:#x}, access = {addr:#x}, last access = {last_addr:#x}, exist triggers: {[f'{x:#x}' for x in triggers]})\n")
             elif lst[1] == "ADD":
                 add+=1
                 target = int(lst[3],16)
@@ -194,7 +194,7 @@ def analyze_one(t, log_file):
                     full_log.write(f"WARMUP DONE\n")
             elif lst[1] == "ISSUE":
                 if args.print:
-                    full_log.write(f"[{lst[0]:^12}] ISSUE ({lst[2]}, PC = {int(lst[3],16):#x}, trigger = {int(lst[4],16):#x}: issue {int(lst[5],16):#x})\n")
+                    full_log.write(f"[{lst[0]:^12}] ISSUE ({lst[2]}, PC = {int(lst[3],16):#x}, trigger = {int(lst[4],16):#x}: issue {int(lst[5],16):#x}, LA = {lst[6]}, {lst[7]}, PQ_index = {lst[8]}, DG = {lst[9]})\n")
     
     with open(f"{RESULT_PATH}/data/{args.prefetcher}/{t}_breif.txt", "w") as f:
         for k,v in counters.items():

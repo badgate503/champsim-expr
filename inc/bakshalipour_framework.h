@@ -314,6 +314,63 @@ protected:
    uint64_t t = 1;
 };
 
+template <class T>
+class SRRIPSetAssociativeCache : public SetAssociativeCache<T>
+{
+  typedef SetAssociativeCache<T> Super;
+
+public:
+  SRRIPSetAssociativeCache(int size, int num_ways, int debug_level = 0) : Super(size, num_ways, debug_level), rrpv(this->num_sets, vector<uint64_t>(num_ways)) {}
+   static const int MAX_RRPV = 7;
+   static const int DEFAULT_RRPV = 6;
+protected:
+  /* @override */
+  int select_victim(uint64_t index) override{
+    vector<uint64_t>& rrpv_set = this->rrpv[index];
+    while(true) {
+      for (size_t i = 0; i < Super::num_ways; i++) {
+        if (rrpv_set[i] == MAX_RRPV) {
+          return i;
+        }
+      }
+      for (size_t i = 0; i < Super::num_ways; i++) {
+         if(rrpv_set[i] < MAX_RRPV) {
+           rrpv_set[i]++;
+         } 
+      }
+    }
+  }
+
+//   void insert(uint64_t key, const srtpMetaTableEntry& data)
+//   {
+//     Super::insert(key, data);
+//     this->set_default(key);
+//   }
+
+  void touch(uint64_t key)
+   {
+      this->decrement(key);
+   }
+
+   void set_default(uint64_t key){ // for insertion
+      uint64_t index = key % this->num_sets;
+      uint64_t tag = key / this->num_sets;
+      int way = this->cams[index][tag];
+      this->rrpv[index][way] = DEFAULT_RRPV;
+   }
+
+   void decrement(uint64_t key) { // for touch
+      uint64_t index = key % this->num_sets;
+      uint64_t tag = key / this->num_sets;
+      int way = this->cams[index][tag];
+      if (this->rrpv[index][way] > 0)
+        this->rrpv[index][way]--;
+   }
+
+
+  vector<vector<uint64_t>> rrpv;
+};
+
 // template <class T>
 // class FIFOSetAssociativeCache : public SetAssociativeCache<T>
 // {

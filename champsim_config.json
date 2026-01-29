@@ -1,5 +1,5 @@
 {
-    "executable_name": "champsim.triangel",
+    "executable_name": "champsim.ltp3.1",
     "block_size": 64,
     "page_size": 4096,
     "heartbeat_frequency": 10000000,
@@ -79,7 +79,7 @@
         "prefetch_as_load": false,
         "virtual_prefetch": false,
         "prefetch_activate": "LOAD,PREFETCH",
-        "prefetcher": "triangel"
+        "prefetcher": "ltp"
     },
     "ITLB": {
         "sets": 32,
