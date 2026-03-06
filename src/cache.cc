@@ -37,10 +37,10 @@ CACHE::CACHE(CACHE&& other)
 
       upper_levels(std::move(other.upper_levels)), lower_level(std::move(other.lower_level)), lower_translate(std::move(other.lower_translate)),
 
-      cpu(other.cpu), NAME(std::move(other.NAME)), NUM_SET(other.NUM_SET), NUM_WAY(other.NUM_WAY), available_ways(other.available_ways), MSHR_SIZE(other.MSHR_SIZE), PQ_SIZE(other.PQ_SIZE),
-      HIT_LATENCY(other.HIT_LATENCY), FILL_LATENCY(other.FILL_LATENCY), OFFSET_BITS(other.OFFSET_BITS), block(std::move(other.block)), MAX_TAG(other.MAX_TAG),
-      MAX_FILL(other.MAX_FILL), prefetch_as_load(other.prefetch_as_load), match_offset_bits(other.match_offset_bits), virtual_prefetch(other.virtual_prefetch),
-      pref_activate_mask(std::move(other.pref_activate_mask)),
+      cpu(other.cpu), NAME(std::move(other.NAME)), NUM_SET(other.NUM_SET), NUM_WAY(other.NUM_WAY), available_ways(other.available_ways),
+      MSHR_SIZE(other.MSHR_SIZE), PQ_SIZE(other.PQ_SIZE), HIT_LATENCY(other.HIT_LATENCY), FILL_LATENCY(other.FILL_LATENCY), OFFSET_BITS(other.OFFSET_BITS),
+      block(std::move(other.block)), MAX_TAG(other.MAX_TAG), MAX_FILL(other.MAX_FILL), prefetch_as_load(other.prefetch_as_load),
+      match_offset_bits(other.match_offset_bits), virtual_prefetch(other.virtual_prefetch), pref_activate_mask(std::move(other.pref_activate_mask)),
 
       sim_stats(std::move(other.sim_stats)), roi_stats(std::move(other.roi_stats)),
 
@@ -93,9 +93,10 @@ auto CACHE::operator=(CACHE&& other) -> CACHE&
   return *this;
 }
 
-void CACHE::impl_setup_prefetcher_llc_connection(CACHE* llc_cache) const {
-    // using pref module connect to llc
-    pref_module_pimpl->impl_setup_prefetcher_llc_connection(llc_cache);
+void CACHE::impl_setup_prefetcher_llc_connection(CACHE* llc_cache) const
+{
+  // using pref module connect to llc
+  pref_module_pimpl->impl_setup_prefetcher_llc_connection(llc_cache);
 }
 
 CACHE::tag_lookup_type::tag_lookup_type(const request_type& req, bool local_pref, bool skip)
@@ -106,7 +107,8 @@ CACHE::tag_lookup_type::tag_lookup_type(const request_type& req, bool local_pref
 
 CACHE::mshr_type::mshr_type(const tag_lookup_type& req, champsim::chrono::clock::time_point _time_enqueued)
     : address(req.address), v_address(req.v_address), ip(req.ip), instr_id(req.instr_id), cpu(req.cpu), type(req.type),
-      prefetch_from_this(req.prefetch_from_this), prefetch_related(false), time_enqueued(_time_enqueued), instr_depend_on_me(req.instr_depend_on_me), to_return(req.to_return)
+      prefetch_from_this(req.prefetch_from_this), prefetch_related(false), time_enqueued(_time_enqueued), instr_depend_on_me(req.instr_depend_on_me),
+      to_return(req.to_return)
 {
 }
 
@@ -185,14 +187,13 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
     //                                             fill_mshr.address, fill_mshr.type));
 
     // find and make sure victim in available ways
-    auto victim_idx = impl_find_victim(fill_mshr.cpu, fill_mshr.instr_id, get_set_index(fill_mshr.address), &*set_begin, fill_mshr.ip,
-                                      fill_mshr.address, fill_mshr.type);
+    auto victim_idx =
+        impl_find_victim(fill_mshr.cpu, fill_mshr.instr_id, get_set_index(fill_mshr.address), &*set_begin, fill_mshr.ip, fill_mshr.address, fill_mshr.type);
     if (victim_idx >= static_cast<long>(available_ways)) {
       victim_idx = available_ways - 1;
     }
 
     way = std::next(set_begin, victim_idx);
-
   }
   assert(set_begin <= way);
   assert(way <= set_end);
@@ -234,8 +235,9 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
     evicting_address = module_address(*way);
   }
 
-  auto metadata_thru = impl_prefetcher_cache_fill(module_address(fill_mshr), get_set_index(fill_mshr.address), way_idx,
-                                                  (fill_mshr.type == access_type::PREFETCH), evicting_address, fill_mshr.data_promise->pf_metadata);
+  auto metadata_thru =
+      impl_prefetcher_cache_fill(module_address(fill_mshr), get_set_index(fill_mshr.address), way_idx, (fill_mshr.type == access_type::PREFETCH),
+                                 evicting_address, fill_mshr.data_promise->pf_metadata, fill_mshr.ip);
   impl_replacement_cache_fill(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, module_address(fill_mshr), fill_mshr.ip, evicting_address,
                               fill_mshr.type);
 
@@ -283,12 +285,12 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   auto metadata_thru = handle_pkt.pf_metadata;
 
   std::string was_prefetched = "NO";
-  if(!hit && handle_pkt.type != access_type::PREFETCH) {
+  if (!hit && handle_pkt.type != access_type::PREFETCH) {
     auto matcher = matches_address(handle_pkt.address);
     // check MSHR
-    auto mshr_entry = std::find_if(std::begin(MSHR), std::end(MSHR), matcher);  // search for MSHR entry
+    auto mshr_entry = std::find_if(std::begin(MSHR), std::end(MSHR), matcher); // search for MSHR entry
     if (mshr_entry != MSHR.end()) {
-      if (mshr_entry->type == access_type::PREFETCH  || mshr_entry->prefetch_related) {
+      if (mshr_entry->type == access_type::PREFETCH || mshr_entry->prefetch_related) {
         // Mark the prefetch as LATE
         was_prefetched = "MSHR";
       }
@@ -304,7 +306,8 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   }
 
   if (should_activate_prefetcher(handle_pkt)) {
-    metadata_thru = impl_prefetcher_cache_operate(module_address(handle_pkt), handle_pkt.ip, hit, useful_prefetch, handle_pkt.type, metadata_thru, was_prefetched);
+    metadata_thru =
+        impl_prefetcher_cache_operate(module_address(handle_pkt), handle_pkt.ip, hit, useful_prefetch, handle_pkt.type, metadata_thru, was_prefetched);
   }
 
   // update replacement policy
@@ -367,7 +370,7 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
 
   mshr_type to_allocate{handle_pkt, current_time};
 
-  if(handle_pkt.type == access_type::PREFETCH) {
+  if (handle_pkt.type == access_type::PREFETCH) {
     to_allocate.prefetch_related = true;
   }
 
@@ -393,7 +396,7 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
     // COLLECT STATS
     sim_stats.mshr_merge.increment(std::pair{to_allocate.type, to_allocate.cpu});
 
-    *mshr_entry = mshr_type::merge(*mshr_entry, to_allocate);  // merge MSHR
+    *mshr_entry = mshr_type::merge(*mshr_entry, to_allocate); // merge MSHR
   } else {
     if (mshr_full) { // not enough MSHR resource
       return false;  // TODO should we allow prefetches anyway if they will not be filled to this level?
@@ -561,6 +564,34 @@ long CACHE::operate()
 
   impl_prefetcher_cycle_operate();
 
+  // insert delayed prefetch requests into PQ
+  for (auto& p : delay_prefetch_queue) {
+    if (p.first <= champsim::operable::current_cycle()) {
+      //fmt::print("[PFDELAY] At cycle {} Issue delayed pf for address {}\n", champsim::operable::current_cycle(), p.second.address);
+      tag_lookup_type pkt = p.second;
+      delay_prefetch_queue.pop_front();
+
+      ++sim_stats.pf_requested;
+
+      if (std::size(internal_PQ) >= PQ_SIZE) {
+        ++sim_stats.pf_dropped;
+        continue;
+      }
+
+      // lyq: merge prefetches to same line in internal_PQ
+      auto pf_entry = std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matches_address(pkt.address));
+      if (pf_entry != std::end(internal_PQ)) {
+        // already have a prefetch to same line
+        continue;
+      }
+
+      internal_PQ.emplace_back(pkt);
+      ++sim_stats.pf_issued;
+    } else {
+      break;
+    }
+  }
+
   if constexpr (champsim::debug_print) {
     fmt::print("[{}] {} cycle completed: {} tags checked: {} remaining: {} stash consumed: {} remaining: {} channel consumed: {} pq consumed {} unused consume "
                "bw {}\n",
@@ -621,37 +652,51 @@ long CACHE::invalidate_entry(champsim::address inval_addr)
 
 bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata, int* pq_index)
 {
-  ++sim_stats.pf_requested;
+#define PF_DELAY 0
+  if (PF_DELAY > 0) {
+    request_type pf_packet;
+    pf_packet.type = access_type::PREFETCH;
+    pf_packet.pf_metadata = prefetch_metadata;
+    pf_packet.cpu = cpu;
+    pf_packet.address = pf_addr;
+    pf_packet.v_address = virtual_prefetch ? pf_addr : champsim::address{};
+    pf_packet.is_translated = !virtual_prefetch;
+    delay_prefetch_queue.emplace_back(champsim::operable::current_cycle() + PF_DELAY, tag_lookup_type(pf_packet, true, !fill_this_level));
+    //fmt::print("[PFDELAY] At cycle {} Delay pf for address {} until cycle {}\n", champsim::operable::current_cycle(), pf_addr, champsim::operable::current_cycle() + PF_DELAY);
+    return true;
+  } else {
+    ++sim_stats.pf_requested;
 
-  if (std::size(internal_PQ) >= PQ_SIZE) {
-    ++sim_stats.pf_dropped;
+    if (std::size(internal_PQ) >= PQ_SIZE) {
+      ++sim_stats.pf_dropped;
+      if (pq_index)
+        *pq_index = -1;
+      return false;
+    }
+
+    // lyq: merge prefetches to same line in internal_PQ
+    auto pf_entry = std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matches_address(pf_addr));
+    if (pf_entry != std::end(internal_PQ)) {
+      // already have a prefetch to same line
+      if (pq_index)
+        *pq_index = pf_entry - std::begin(internal_PQ);
+      return false;
+    }
+
+    request_type pf_packet;
+    pf_packet.type = access_type::PREFETCH;
+    pf_packet.pf_metadata = prefetch_metadata;
+    pf_packet.cpu = cpu;
+    pf_packet.address = pf_addr;
+    pf_packet.v_address = virtual_prefetch ? pf_addr : champsim::address{};
+    pf_packet.is_translated = !virtual_prefetch;
+    internal_PQ.emplace_back(pf_packet, true, !fill_this_level);
+    ++sim_stats.pf_issued;
+
     if (pq_index)
-      *pq_index = -1;
-    return false;
+      *pq_index = internal_PQ.size() - 1;
+    return true;
   }
-
-  // lyq: merge prefetches to same line in internal_PQ
-  auto pf_entry = std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matches_address(pf_addr));
-  if (pf_entry != std::end(internal_PQ)) {
-    // already have a prefetch to same line
-    if (pq_index)
-      *pq_index = pf_entry - std::begin(internal_PQ);
-    return false;
-  }
-
-  request_type pf_packet;
-  pf_packet.type = access_type::PREFETCH;
-  pf_packet.pf_metadata = prefetch_metadata;
-  pf_packet.cpu = cpu;
-  pf_packet.address = pf_addr;
-  pf_packet.v_address = virtual_prefetch ? pf_addr : champsim::address{};
-  pf_packet.is_translated = !virtual_prefetch;
-  internal_PQ.emplace_back(pf_packet, true, !fill_this_level);
-  ++sim_stats.pf_issued;
-
-  if (pq_index)
-    *pq_index = internal_PQ.size() - 1;
-  return true;
 }
 
 // LCOV_EXCL_START exclude deprecated function
@@ -859,10 +904,10 @@ uint32_t CACHE::impl_prefetcher_cache_operate(champsim::address addr, champsim::
   return pref_module_pimpl->impl_prefetcher_cache_operate(addr, ip, cache_hit, useful_prefetch, type, metadata_in, latepf);
 }
 
-uint32_t CACHE::impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
-                                           uint32_t metadata_in) const
+uint32_t CACHE::impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr, uint32_t metadata_in,
+                                           champsim::address ip) const
 {
-  return pref_module_pimpl->impl_prefetcher_cache_fill(addr, set, way, prefetch, evicted_addr, metadata_in);
+  return pref_module_pimpl->impl_prefetcher_cache_fill(addr, set, way, prefetch, evicted_addr, metadata_in, ip);
 }
 
 void CACHE::impl_prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where) const
@@ -873,8 +918,6 @@ void CACHE::impl_prefetcher_late_prefetch(champsim::address addr, champsim::addr
 void CACHE::impl_prefetcher_cycle_operate() const { pref_module_pimpl->impl_prefetcher_cycle_operate(); }
 
 void CACHE::impl_prefetcher_final_stats() const { pref_module_pimpl->impl_prefetcher_final_stats(); }
-
-
 
 void CACHE::impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) const
 {
@@ -1006,7 +1049,7 @@ auto CACHE::get_available_set_span(champsim::address address) -> std::pair<set_t
 {
   const auto set_idx = get_set_index(address);
   assert(set_idx < NUM_SET);
-  
+
   auto begin = std::next(std::begin(block), static_cast<set_type::difference_type>(set_idx * NUM_WAY));
   auto end = std::next(begin, available_ways); // 限制在可用路数内
   return {begin, end};
@@ -1016,7 +1059,7 @@ auto CACHE::get_available_set_span(champsim::address address) const -> std::pair
 {
   const auto set_idx = get_set_index(address);
   assert(set_idx < NUM_SET);
-  
+
   auto begin = std::next(std::cbegin(block), static_cast<set_type::difference_type>(set_idx * NUM_WAY));
   auto end = std::next(begin, available_ways); // 限制在可用路数内
   return {begin, end};

@@ -55,10 +55,13 @@ class miss_cause(Enum):
 
 
 import glob
+
+data_dir = os.path.join(RESULT_PATH, "data", args.prefetcher)
+os.makedirs(data_dir, exist_ok=True)
 already_analyzed = []
-for result in glob.glob(os.path.join(f"{RESULT_PATH}/data/{args.prefetcher}",f"*_breif.txt")):
+for result in glob.glob(os.path.join(data_dir, "*_breif.txt")):
     t = os.path.splitext(os.path.basename(result))[0]
-    already_analyzed.append(t.replace(f"_breif",""))
+    already_analyzed.append(t.replace("_breif", ""))
 print(f"Already analyzed {len(already_analyzed)} traces: {already_analyzed}")
 
 
@@ -194,7 +197,8 @@ def analyze_one(t, log_file):
                     full_log.write(f"WARMUP DONE\n")
             elif lst[1] == "ISSUE":
                 if args.print:
-                    full_log.write(f"[{lst[0]:^12}] ISSUE ({lst[2]}, PC = {int(lst[3],16):#x}, trigger = {int(lst[4],16):#x}: issue {int(lst[5],16):#x}, LA = {lst[6]}, {lst[7]}, PQ_index = {lst[8]}, DG = {lst[9]})\n")
+                    full_log.write(f"[{lst[0]:^12}] ISSUE ({lst[2]}, PC = {int(lst[3],16):#x}, trigger = {int(lst[4],16):#x}: issue {int(lst[5],16):#x})\n")
+                    # full_log.write(f"[{lst[0]:^12}] ISSUE ({lst[2]}, PC = {int(lst[3],16):#x}, trigger = {int(lst[4],16):#x}: issue {int(lst[5],16):#x}, LA = {lst[6]}, {lst[7]}, PQ_index = {lst[8]}, DG = {lst[9]})\n")
     
     with open(f"{RESULT_PATH}/data/{args.prefetcher}/{t}_breif.txt", "w") as f:
         for k,v in counters.items():

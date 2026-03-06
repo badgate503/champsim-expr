@@ -17,10 +17,11 @@
 #include "bakshalipour_framework.h"
 #include "cache.h"
 #include "champsim.h"
-// #include "morton_filter/morton_sample_configs.h"
+#include "morton_filter/morton_sample_configs.h"
 
+#define FILTER_MODE 0 // 0: no filter; 1: ideal; 2: directly map table
 #define META_TABLE_SIZE 393216
-#define META_TABLE_ASSOC 96
+#define META_TABLE_ASSOC 12
 #define MRB_TABLE_SIZE 65526
 #define MRB_TABLE_ASSOC 16
 #define MRB_MAX_COUNTER 3
@@ -215,21 +216,19 @@ struct PCTableEntry {
   uint64_t latePrefetchCount;
   uint64_t accuratePrefetchCount;
   uint64_t issuedPrefetchCount;
+  uint64_t filledPrefetchCount;
   uint64_t missCount;
 
-  PCTableEntry(uint64_t _lastAddr = 0, bool cache_hit = false) : lastAddr(_lastAddr), lastlastAddr(0), lookahead(false), degree(GLOBAL_DEGREE), latePrefetchHistory(0), coverageHistory(0), latePrefetchCount(0), accuratePrefetchCount(0), issuedPrefetchCount(0), missCount(cache_hit ? 0 : 1) {};
-  void shift_counter(){
-    float accuracy = 1.0 * accuratePrefetchCount / issuedPrefetchCount;
+  PCTableEntry(uint64_t _lastAddr = 0, bool cache_hit = false)
+      : lastAddr(_lastAddr), lastlastAddr(0), lookahead(true), degree(8), latePrefetchHistory(0), coverageHistory(0), latePrefetchCount(0),
+        accuratePrefetchCount(0), issuedPrefetchCount(0), filledPrefetchCount(0), missCount(cache_hit ? 0 : 1) {};
+  void shift_counter()
+  {
+    float accuracy = 1.0 * accuratePrefetchCount / filledPrefetchCount;
 
-    // if (!lookahead && accuracy < 0.05) {
-    //   degree = 0;
-    // }
-    
-    if (degree < 2 && latePrefetchCount > 4 && accuracy > 0.5) {
+    if (degree < 3 && latePrefetchCount >= 4 && accuracy > 0.5) {
       degree += 1;
-    }else  if (degree < 4 && latePrefetchCount > 8 && accuracy > 0.5) {
-      degree += 1;
-    }else if (degree < 6 && latePrefetchCount > 8 && accuracy > 0.75) {
+    } else if (degree < 6 && latePrefetchCount >= 8 && accuracy > 0.75) {
       degree += 1;
     }
 
@@ -240,9 +239,10 @@ struct PCTableEntry {
       }
     }
 
-    latePrefetchCount >>= 1; 
+    latePrefetchCount >>= 1;
     accuratePrefetchCount >>= 1;
     issuedPrefetchCount >>= 1;
+    filledPrefetchCount >>= 1;
     missCount >>= 1;
   };
 };
@@ -253,15 +253,13 @@ struct GlobalPCEntry {
   uint64_t timestamp;
 };
 
-class PF_Filter{
+class PF_Filter
+{
 public:
   uint64_t size;
   uint8_t width;
   vector<uint64_t> table;
-  PF_Filter(int size, int width) : size(size), width(width)
-  {
-    table.resize(size, 0);
-  }
+  PF_Filter(int size, int width) : size(size), width(width) { table.resize(size, 0); }
 
   bool add(uint64_t addr)
   {
@@ -339,7 +337,7 @@ public:
 
   ltpMRBTable* mrbTable = new ltpMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
 
-  std::unordered_map<uint64_t, PCTableEntry> pcTable; 
+  std::unordered_map<uint64_t, PCTableEntry> pcTable;
 
   std::set<uint64_t> metaUsedPool;
 
@@ -347,13 +345,15 @@ public:
 
   std::map<uint64_t, uint64_t> prefetched_addr; // <block_addr, trigger pc>
 
+#if FILTER_MODE == 1
   std::set<uint64_t> no_need_prefetch;
-
+#elif FILTER_MODE == 2
   PF_Filter pf_filter = PF_Filter(PF_FILTER_SIZE, 8);
+#elif FILTER_MODE == 3
+  CompressedCuckoo::Morton3_8* mf = new CompressedCuckoo::Morton3_8{8192};
+#endif
 
-  // CompressedCuckoo::Morton3_8 mf(8192);
-
-#ifdef PC_TRIGGER_PREFETCH  
+#ifdef PC_TRIGGER_PREFETCH
   std::deque<GlobalPCEntry> GPQ;
   std::map<uint64_t, uint64_t> GPMetaTable; // <trigger pc, block_addr>
 #endif
@@ -397,7 +397,7 @@ public:
     llc_cache = llc;
     benchmark = champsim::global_trace_name;
 
-    log_file_name = "/mnt/data/lyq/exprlog/ltp/" + toProfilePath(benchmark) + ".txt";
+    log_file_name = "./" + toProfilePath(benchmark) + ".txt";
     cout << log_file_name << endl;
     logfile.open(log_file_name);
 
@@ -517,7 +517,7 @@ public:
   }
   uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
                                     uint32_t metadata_in, std::string latepf);
-  uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in);
+  uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in, champsim::address ip);
   void prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where);
   void prefetcher_cycle_operate();
   void prefetcher_final_stats();

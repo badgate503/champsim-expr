@@ -12,28 +12,39 @@ int ltp::issue_metatable(ltpMetaTable* metaTable, uint64_t lookup, uint64_t pc, 
       break;
     addToUsedPool(lookup);
     if (candidate->correlatedAddr != 0) {
+#if FILTER_MODE == 0
+      if (!isAlreadyInQueue(addresses, candidate->correlatedAddr)) {
+#elif FILTER_MODE == 1
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr) && no_need_prefetch.find(candidate->correlatedAddr) == no_need_prefetch.end()) {
-      // if (!isAlreadyInQueue(addresses, candidate->correlatedAddr) && !pf_filter.find(candidate->correlatedAddr)) {
-      // if (!isAlreadyInQueue(addresses, candidate->correlatedAddr)) {
+#elif FILTER_MODE == 2
+      if (!isAlreadyInQueue(addresses, candidate->correlatedAddr) && !pf_filter.find(candidate->correlatedAddr)) {
+#elif FILTER_MODE == 3
+      if (!isAlreadyInQueue(addresses, candidate->correlatedAddr) && !mf->likely_contains((keys_t)candidate->correlatedAddr)) {
+#endif
         champsim::address prefetch_addr{candidate->correlatedAddr << LOG2_BLOCK_SIZE};
         int pq_index = -1;
         const bool success = prefetch_line(prefetch_addr, true, 0, &pq_index);
         if (success) {
+#if FILTER_MODE == 1
           no_need_prefetch.insert(candidate->correlatedAddr);
+#elif FILTER_MODE == 2
           pf_filter.add(candidate->correlatedAddr);
+#elif FILTER_MODE == 3
+          mf->insert((keys_t)candidate->correlatedAddr);
+#endif
           addresses.push_back(candidate->correlatedAddr);
           issued++;
 #ifdef ELABORATE_LOG
           logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << " "
                   << (pcTable[pc].lookahead ? "LA" : "NLA") << " success " << std::dec << pq_index << " " << (pcTable[pc].degree) << std::endl;
 #endif
-        }else if (pq_index >= 0){
+        } else if (pq_index >= 0) {
           // merge
 #ifdef ELABORATE_LOG
           logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << " "
                   << (pcTable[pc].lookahead ? "LA" : "NLA") << " merge " << std::dec << pq_index << " " << (pcTable[pc].degree) << std::endl;
 #endif
-        }else {
+        } else {
           // drop
 #ifdef ELABORATE_LOG
           logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << " "
@@ -52,33 +63,44 @@ int ltp::issue_mrbtable(ltpMRBTable* mrbTable, uint64_t lookup, uint64_t pc, std
 {
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
-        ltpMetaTableEntry* candidate = metaTable->find(lookup);
+    ltpMetaTableEntry* candidate = metaTable->find(lookup);
     if (candidate == nullptr)
       break;
     addToUsedPool(lookup);
     if (candidate->correlatedAddr != 0) {
+#if FILTER_MODE == 0
+      if (!isAlreadyInQueue(addresses, candidate->correlatedAddr)) {
+#elif FILTER_MODE == 1
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr) && no_need_prefetch.find(candidate->correlatedAddr) == no_need_prefetch.end()) {
-      // if (!isAlreadyInQueue(addresses, candidate->correlatedAddr) && !pf_filter.find(candidate->correlatedAddr)) {
-      // if (!isAlreadyInQueue(addresses, candidate->correlatedAddr)) {
+#elif FILTER_MODE == 2
+      if (!isAlreadyInQueue(addresses, candidate->correlatedAddr) && !pf_filter.find(candidate->correlatedAddr)) {
+#elif FILTER_MODE == 3
+      if (!isAlreadyInQueue(addresses, candidate->correlatedAddr) && !mf->likely_contains((keys_t)candidate->correlatedAddr)) {
+#endif
         champsim::address prefetch_addr{candidate->correlatedAddr << LOG2_BLOCK_SIZE};
         int pq_index = -1;
         const bool success = prefetch_line(prefetch_addr, true, 0, &pq_index);
         if (success) {
+#if FILTER_MODE == 1
           no_need_prefetch.insert(candidate->correlatedAddr);
+#elif FILTER_MODE == 2
           pf_filter.add(candidate->correlatedAddr);
+#elif FILTER_MODE == 3
+          mf->insert((keys_t)candidate->correlatedAddr);
+#endif
           addresses.push_back(candidate->correlatedAddr);
           issued++;
 #ifdef ELABORATE_LOG
           logfile << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << " "
                   << (pcTable[pc].lookahead ? "LA" : "NLA") << " success " << std::dec << pq_index << " " << (pcTable[pc].degree) << std::endl;
 #endif
-        }else if (pq_index >= 0){
+        } else if (pq_index >= 0) {
           // merge
 #ifdef ELABORATE_LOG
           logfile << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << " "
                   << (pcTable[pc].lookahead ? "LA" : "NLA") << " merge " << std::dec << pq_index << " " << (pcTable[pc].degree) << std::endl;
 #endif
-        }else {
+        } else {
           // drop
 #ifdef ELABORATE_LOG
           logfile << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << " "
@@ -186,23 +208,10 @@ uint32_t ltp::prefetcher_cache_operate(champsim::address addr, champsim::address
       pc_entry.latePrefetchHistory <<= 1;
       pc_entry.coverageHistory = (pc_entry.coverageHistory << 1) | 1;
       pc_entry.accuratePrefetchCount += 1;
-      if (pc_entry.accuratePrefetchCount >= 64 || pc_entry.issuedPrefetchCount >= 64) {
-        pc_entry.shift_counter();
+      if (pc_entry.accuratePrefetchCount >= 64 || pc_entry.filledPrefetchCount >= 64) {
+        // pc_entry.shift_counter();
       }
     }
-
-    // float accuracy = pc_entry.issuedPrefetchCount == 0 ? 0.0 : (1.0 * pc_entry.accuratePrefetchCount / pc_entry.issuedPrefetchCount);
-    // float coverage = (pc_entry.usefulPrefetchCount + pc_entry.missCount) == 0 ? 0.0 : (1.0 * pc_entry.usefulPrefetchCount / (pc_entry.usefulPrefetchCount + pc_entry.missCount));
-    // float coverage = 1.0 * __builtin_popcount(pc_entry.coverageHistory) / 64;
-    // if (pc_entry.degree < MAX_DEGREE && pc_entry.latePrefetchHistory > 0 && accuracy > HIGH_ACCURACY_THRESHOLD) {
-      // pc_entry.degree += 1;
-    // }
-    // if (pc_entry.degree > 1 && (accuracy < LOW_ACCURACY_THRESHOLD || coverage < LOW_COVERAGE_THRESHOLD)) {
-      // pc_entry.degree -= 1;
-    // }
-    // if (accuracy < LOW_ACCURACY_THRESHOLD && coverage < LOW_COVERAGE_THRESHOLD) {
-    // pc_entry.degree = 0;
-    // }
 
     if (lastAddr != block_addr) {
       // 1.search: touch the metadata entry if exists, and then issue prefetches at step 2
@@ -295,12 +304,23 @@ uint32_t ltp::prefetcher_cache_operate(champsim::address addr, champsim::address
   return metadata_in;
 }
 
-uint32_t ltp::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
+uint32_t ltp::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in, champsim::address ip)
 {
+  uint64_t pc = ip.to<uint64_t>();
+  if (prefetch && pcTable.find(pc) != pcTable.end()) {
+    PCTableEntry& pc_entry = pcTable[pc];
+    pc_entry.filledPrefetchCount += 1;
+  }
+#if FILTER_MODE == 1
   no_need_prefetch.erase((evicted_addr.to<uint64_t>()) >> LOG2_BLOCK_SIZE);
   no_need_prefetch.insert((addr.to<uint64_t>()) >> LOG2_BLOCK_SIZE);
-
+#elif FILTER_MODE == 2
   pf_filter.erase((evicted_addr.to<uint64_t>()) >> LOG2_BLOCK_SIZE);
+#elif FILTER_MODE == 3
+  mf->delete_item((keys_t)((evicted_addr.to<uint64_t>()) >> LOG2_BLOCK_SIZE));
+  mf->insert((keys_t)((addr.to<uint64_t>()) >> LOG2_BLOCK_SIZE));
+#endif
+
   return metadata_in;
 }
 
@@ -313,12 +333,9 @@ void ltp::prefetcher_late_prefetch(champsim::address addr, champsim::address ip,
     pc_entry.latePrefetchHistory = (pc_entry.latePrefetchHistory << 1) | 1;
     pc_entry.accuratePrefetchCount += 1;
 
-    if (!pc_entry.lookahead && pc_entry.latePrefetchCount >= 4){
+    if (!pc_entry.lookahead && pc_entry.latePrefetchCount >= 4) {
       pc_entry.lookahead = true;
     }
-    // if (!pc_entry.lookahead && (1.0 * __builtin_popcount(pc_entry.latePrefetchHistory) / 32) > LATE_THRESHOLD) {
-    //   pc_entry.lookahead = true;
-    // }
   }
 }
 

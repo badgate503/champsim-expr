@@ -19,7 +19,7 @@
 
 // #define META_TABLE_SIZE 196608
 #define META_TABLE_SIZE 393216
-#define META_TABLE_ASSOC 96
+#define META_TABLE_ASSOC 12
 #define MRB_TABLE_SIZE 65526
 #define MRB_TABLE_ASSOC 16
 #define MRB_MAX_COUNTER 3
@@ -224,6 +224,7 @@ public:
    * Information used to create a new PC table. All of them behave equally.
    */
 
+  
   std::map<uint64_t, TrainEntry> trainTable;
 
   baselineMetaTable* metaTable = new baselineMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);

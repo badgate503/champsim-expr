@@ -19,7 +19,7 @@
 
 // #define META_TABLE_SIZE 196608
 #define META_TABLE_SIZE 393216
-#define META_TABLE_ASSOC 96
+#define META_TABLE_ASSOC 12
 #define MRB_TABLE_SIZE 65526
 #define MRB_TABLE_ASSOC 16
 #define MRB_MAX_COUNTER 3
@@ -316,7 +316,7 @@ public:
   {
     metaTable->setpp(this);
     benchmark = champsim::global_trace_name;
-    log_file_name = "/mnt/data/lyq/exprlog/srtp/" + toProfilePath(benchmark) + ".txt";
+    log_file_name = "./" + toProfilePath(benchmark) + ".txt";
     cout << log_file_name << endl;
 #ifdef ELABORATE_LOG
     logfile.open(log_file_name);

@@ -1,9 +1,8 @@
-#ifndef PTP
-#define PTP
+#ifndef MJTP
+#define MJTP
 
 #include <cassert>
 #include <cstdint>
-#include <deque>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -18,19 +17,19 @@
 #include "cache.h"
 #include "champsim.h"
 
+// #define META_TABLE_SIZE 196608
 #define META_TABLE_SIZE 393216
+// #define META_TABLE_ASSOC 12
 #define META_TABLE_ASSOC 12
 #define MRB_TABLE_SIZE 65526
 #define MRB_TABLE_ASSOC 16
 #define MRB_MAX_COUNTER 3
 #define GLOBAL_DEGREE 1 // metatable & mrb_table has this degree
 
+#define IS_TRAIN true
 #define ENABLE_MRB false
-#define ENABLE_PGO false
 
-#define GPQ_SIZE 4
-
-class ptp;
+class mjtp;
 
 struct SingleMetaEntry {
   uint64_t correlatedAddr;
@@ -78,29 +77,39 @@ struct TrainEntry {
   bool protect;
 };
 
-struct ptpMetaTableEntry {
+struct mjtpMetaTableEntry {
 
   uint64_t correlatedAddr;
   // int counter;
   bool used;
   // uint64_t pc;
-  ptpMetaTableEntry() : correlatedAddr(0), used(false) {};
-  ptpMetaTableEntry(uint64_t addr) : correlatedAddr(addr) {};
+  mjtpMetaTableEntry() : correlatedAddr(0), used(false) {};
+  mjtpMetaTableEntry(uint64_t addr) : correlatedAddr(addr) {};
 };
 
-class ptpMetaTable : public LRUSetAssociativeCache<ptpMetaTableEntry>
+#ifdef INFMJ
+class mjtpMetaTable : public INFMJSetAssociativeCache<mjtpMetaTableEntry>
 {
-  typedef LRUSetAssociativeCache<ptpMetaTableEntry> Super;
+  typedef INFMJSetAssociativeCache<mjtpMetaTableEntry> Super;
+#else
+class mjtpMetaTable : public MJSetAssociativeCache<mjtpMetaTableEntry>
+{
+  typedef MJSetAssociativeCache<mjtpMetaTableEntry> Super;
+#endif
 
 public:
   std::unordered_map<uint64_t, std::set<uint64_t>> reverse_metatable;
-  ptp* pp;
+  mjtp* pp;
 
-  ptpMetaTable(int size, int num_ways) : Super(size, num_ways), priority_pgo(num_sets, vector<uint8_t>(num_ways, 0)) {}
+#ifdef MJ_LYQREP
+  std::map<uint64_t, uint64_t> recent_prefetches; // <prefetch_addr, trigger_addr>
+#endif
 
-  void setpp(ptp* p) { pp = p; }
+  mjtpMetaTable(int size, int num_ways) : Super(size, num_ways), pp(nullptr) {}
 
-  ptpMetaTableEntry* find(uint64_t key)
+  void setpp(mjtp* p) { pp = p; }
+
+  mjtpMetaTableEntry* find(uint64_t key)  // wo touch
   {
     Entry* entry = Super::find(key);
     if (!entry) {
@@ -108,58 +117,83 @@ public:
     }
     return &(entry->data);
   }
+
+  void mj_initialize(){
+    Super::mj_initialize();
+  }
+
+  void mj_update(uint64_t full_addr, uint32_t set, uint32_t way, bool hit, uint64_t pc) {
+    Super::mj_update(full_addr, set, way, hit, pc);
+  }
+
+#ifdef MJ_LYQREP
+  void only_update_sample(uint64_t full_addr, uint32_t set, uint32_t way, bool hit, uint64_t pc){
+    uint64_t pc_sig = get_pc_signature(pc, hit);
+    if (inf_track_cache.count(full_addr)) {
+      uint64_t last_signature = inf_track_cache[full_addr].signature;
+      uint64_t last_timestamp = inf_track_cache[full_addr].timestamp;
+      inf_track_cache[full_addr].timestamp = current_timestamp[set];
+      int sample = time_elapsed(current_timestamp[set], last_timestamp);
+      if (sample <= INF_RD) {
+        if (rdp.count(last_signature)) // update rdp
+        {
+          int init = rdp[last_signature];
+          // 更新 rdp 的 reuse 距离预测值
+          rdp[last_signature] = temporal_difference(init, sample);
+        } else {
+          rdp[last_signature] = sample;
+        }
+      }
+    } else {
+      SampledCacheLine temp(true, pc_sig, current_timestamp[set]);
+      inf_track_cache[full_addr] = temp;
+    }
+  }
+
+  void only_set_repl(uint64_t full_addr, uint32_t set, uint32_t way, bool hit, uint64_t pc){
+    uint64_t pc_sig = get_pc_signature(pc, hit);
+    if (way < LLC_WAY) {
+      if (!rdp.count(pc_sig)) {
+        etr[set][way] = 0;
+      } else {
+        if (rdp[pc_sig] > MAX_RD) {
+          etr[set][way] = INF_ETR;
+        } else {
+          etr[set][way] = rdp[pc_sig] / GRANULARITY;
+        }
+      }
+    }
+  }
+#endif
 
   /*
       If evict another valid entry: return true!
       else: return false!
   */
-  bool insert(uint64_t key, const ptpMetaTableEntry& data, uint8_t priority = 0);
+  bool insert(uint64_t key, const mjtpMetaTableEntry& data, uint64_t pc, bool useful_prefetch);
+
   Entry* erase(uint64_t key) { return Super::erase(key); }
 
-  /* @override */
-  int select_victim(uint64_t index)
-  {
-    uint8_t min_priority = 255;
-    uint64_t min_lru = UINT64_MAX;
-    int victim_index = 0;
-    vector<uint8_t>& priority_set = this->priority_pgo[index];
-    vector<uint64_t>& lru_set = this->lru[index];
-    for (size_t i = 0; i < num_ways; i++) {
-      if (min_priority > priority_set[i]) {
-        min_priority = priority_set[i];
-        min_lru = lru_set[i];
-        victim_index = i;
-      } else if (min_priority == priority_set[i]) {
-        if (min_lru < lru_set[i]) {
-          min_lru = lru_set[i];
-          victim_index = i;
-        }
-      }
-    }
-    return victim_index;
-  }
-
-  vector<vector<uint8_t>> priority_pgo;
 };
 
-struct ptpMRBTableEntry {
+struct mjtpMRBTableEntry {
   uint64_t correlatedAddr;
   uint8_t counter;
-  ptpMRBTableEntry() : correlatedAddr(0), counter(0) {};
-  ptpMRBTableEntry(uint64_t addr) : correlatedAddr(addr), counter(0) {};
+  mjtpMRBTableEntry() : correlatedAddr(0), counter(0) {};
+  mjtpMRBTableEntry(uint64_t addr) : correlatedAddr(addr), counter(0) {};
 };
 
-class ptpMRBTable : public LRUSetAssociativeCache<ptpMRBTableEntry>
+class mjtpMRBTable : public LRUSetAssociativeCache<mjtpMRBTableEntry>
 {
-  typedef LRUSetAssociativeCache<ptpMRBTableEntry> Super;
+  typedef LRUSetAssociativeCache<mjtpMRBTableEntry> Super;
 
 public:
-  ptpMRBTable(int size, int num_ways) : Super(size, num_ways)
+  mjtpMRBTable(int size, int num_ways) : Super(size, num_ways)
   {
     // assert(__builtin_popcount(size) == 1);
   }
 
-  ptpMRBTableEntry* find(uint64_t key)
+  mjtpMRBTableEntry* find(uint64_t key)
   {
     Entry* entry = Super::find(key);
     if (!entry) {
@@ -168,7 +202,7 @@ public:
     return &(entry->data);
   }
 
-  void insert(uint64_t key, const ptpMRBTableEntry& data)
+  void insert(uint64_t key, const mjtpMRBTableEntry& data)
   {
     Super::insert(key, data);
     Super::set_mru(key);
@@ -200,19 +234,18 @@ public:
   }
 };
 
-struct GlobalPCEntry {
-  uint64_t ip;
-  bool hit;
-  uint64_t timestamp;
-};
-
-class ptp : public champsim::modules::prefetcher
+class mjtp : public champsim::modules::prefetcher
 {
 public:
+
+  uint64_t stats_md_lookups = 0;
+  uint64_t stats_md_hits = 0;
+  uint64_t stats_useful_prefetches = 0;
+
   // BaseTags* cachetags;
   CACHE* llc_cache = NULL;
   int debug_level = 0;
-  bool enablePGO = ENABLE_PGO;
+  bool inTraining = IS_TRAIN;
   bool enableMRB = ENABLE_MRB;
   int globalDegree = GLOBAL_DEGREE;
   bool disablePF = false;
@@ -233,9 +266,9 @@ public:
 
   std::map<uint64_t, TrainEntry> trainTable;
 
-  ptpMetaTable* metaTable;
+  mjtpMetaTable* metaTable = new mjtpMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
 
-  ptpMRBTable* mrbTable = new ptpMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
+  mjtpMRBTable* mrbTable = new mjtpMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
 
   std::unordered_map<uint64_t, uint64_t> pcTable; // record the last addr of PCs
 
@@ -245,10 +278,8 @@ public:
 
   std::map<uint64_t, uint64_t> prefetched_addr; // <block_addr, trigger pc>
 
-  std::deque<GlobalPCEntry> GPQ;
-  std::map<uint64_t, uint64_t> GPMetaTable; // <trigger pc, block_addr>
-
   std::string log_file_name;
+  std::string hint_file;
   std::ofstream logfile;
   bool warmup_complete = false;
 
@@ -279,77 +310,12 @@ public:
     size_t second_last_dot = file_part.rfind('.', last_dot - 1);
     std::string base_name = (second_last_dot == std::string::npos) ? file_part.substr(0, last_dot) : file_part.substr(0, second_last_dot);
 
-    // std::string profile_path = "/mnt/data/lyq/Kairos/expr/hint/"+ base_name + ".txt";
+    // std::string profile_path = "/mnt/data/lyq/Kairos2/expr/log/mjtp/"+ base_name + ".txt";
     return base_name;
   }
-  void set_llc_reference(CACHE* llc)
-  {
-    llc_cache = llc;
-    benchmark = champsim::global_trace_name;
 
-    log_file_name = "./" + toProfilePath(benchmark) + ".txt";
-    cout << log_file_name << endl;
-    logfile.open(log_file_name);
+  void set_llc_reference(CACHE* llc) { llc_cache = llc; }
 
-    if (!ENABLE_PGO) {
-      metaTable = new ptpMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
-      metaTable->setpp(this);
-    } else {
-      std::string trace_path(benchmark);
-      std::string file_name = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(trace_path) + ".txt";
-      // std::string file_name = "profile.txt";
-      std::ifstream pc_file(file_name);
-      if (!pc_file) {
-        std::cerr << "Unable to open: " << file_name << endl;
-        assert(false);
-      }
-
-      std::string line;
-      std::getline(pc_file, line);
-      int num_entries = std::stoi(line);
-
-      if (num_entries == 0) {
-        waysForCache = 16;
-        disablePF = true;
-      } else if (num_entries < 4096 * 12 * 1) {
-        waysForCache = 15;
-      } else if (num_entries < 4096 * 12 * 2) {
-        waysForCache = 14;
-      } else if (num_entries < 4096 * 12 * 4) {
-        waysForCache = 12;
-      } else if (num_entries < 4096 * 12 * 8) {
-        waysForCache = 8;
-      } else {
-        assert(false && "Error: Incorrectly formatted line.");
-      }
-
-      if (!disablePF) {
-        metaTable = new ptpMetaTable(META_TABLE_SIZE, (16 - waysForCache) * 12);
-        metaTable->setpp(this);
-      }
-      llc_cache->set_available_ways(waysForCache);
-      cout << "Alloc " << waysForCache << " for cache" << endl;
-
-      while (std::getline(pc_file, line)) {
-        std::istringstream lineStream(line);
-        std::string PC;
-        std::string priority;
-
-        if (std::getline(lineStream, PC, ',') && std::getline(lineStream, priority, ',')) {
-          // PC and degree are now split into two variables
-          if (std::stoull(priority) == 0)
-            continue;
-          cout << "Add PC=0x" << hex << std::stoull(PC, nullptr, 16) << endl;
-          profileInsertTable.insert(std::stoull(PC, nullptr, 16));
-          profileReplTable[std::stoull(PC, nullptr, 16)] = std::stoull(priority);
-        } else {
-          std::cerr << "Error: Incorrectly formatted line." << endl;
-        }
-      }
-      cout << std::dec;
-      pc_file.close();
-    }
-  }
   void addToUsedPool(uint64_t a)
   {
     if (metaUsedPool.find(a) == metaUsedPool.end()) {
@@ -373,10 +339,10 @@ public:
     return false;
   }
 
-  int issue_metatable(ptpMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
-  int issue_mrbtable(ptpMRBTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
+  int issue_metatable(mjtpMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
+  int issue_mrbtable(mjtpMRBTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses);
 
-  void invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8_t type, vector<uint64_t>& pref_addr);
+  void invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8_t type, vector<uint64_t>& pref_addr, bool useful_prefetch);
 
   void outPrefetcherPGOInfo();
 
@@ -397,21 +363,30 @@ public:
       return std::set<uint64_t>();
     }
   };
+
   using champsim::modules::prefetcher::prefetcher;
 
   void prefetcher_initialize()
   {
-    /*
-      --- init in function set_llc_reference! ---
-      --- init in function set_llc_reference! ---
-      --- init in function set_llc_reference! ---
-    */
+    metaTable->setpp(this);
+    metaTable->mj_initialize();
+    benchmark = champsim::global_trace_name;
+    log_file_name = "./" + toProfilePath(benchmark) + ".txt";
+    cout << log_file_name << endl;
+#ifdef ELABORATE_LOG
+    logfile.open(log_file_name);
+#endif
+    hint_file = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(benchmark) + ".txt";
+
   }
+
+
   uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
                                     uint32_t metadata_in, std::string latepf);
   uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in);
+  void prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where);
   void prefetcher_cycle_operate();
   void prefetcher_final_stats();
 };
 
-#endif
+#endif // __MEM_CACHE_PREFETCH_mjtp_HH__
