@@ -4,7 +4,7 @@ import os
 import json
 from urllib.parse import urlparse, parse_qs, unquote
 
-PORT = 8000
+PORT = 8002
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 RESULT_BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), '../data'))

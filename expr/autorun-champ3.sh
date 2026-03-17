@@ -1,1 +1,0 @@
-./expr.py -m ipc -p no -l ligra spec17 ml google gap spec06

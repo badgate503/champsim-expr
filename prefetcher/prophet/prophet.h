@@ -17,6 +17,9 @@
 #include "cache.h"
 #include "champsim.h"
 
+#define PC_TABLE_SIZE 512
+#define PC_TABLE_ASSOC 16
+
 #define META_TABLE_SIZE 393216
 #define META_TABLE_ASSOC 12
 #define MRB_TABLE_SIZE 65526
@@ -24,7 +27,7 @@
 #define MRB_MAX_COUNTER 3
 #define GLOBAL_DEGREE 1 // metatable & mrb_table has this degree
 
-#define IS_TRAIN false
+// #define IS_TRAIN
 #define ENABLE_MRB true
 
 class prophet;
@@ -204,7 +207,11 @@ public:
   // BaseTags* cachetags;
   CACHE* llc_cache = NULL;
   int debug_level = 0;
-  bool inTraining = IS_TRAIN;
+#ifdef IS_TRAIN
+  bool inTraining = true;
+#else
+  bool inTraining = false;
+#endif
   bool enableMRB = ENABLE_MRB;
   int globalDegree = GLOBAL_DEGREE;
   bool disablePF = false;
@@ -219,9 +226,6 @@ public:
   long long global_timestamp = 0;
   uint32_t allMisses = 0;
   int waysForCache = 8;
-  /**
-   * Information used to create a new PC table. All of them behave equally.
-   */
 
   std::map<uint64_t, TrainEntry> trainTable;
 
@@ -229,7 +233,7 @@ public:
 
   ProphetMRBTable* mrbTable = new ProphetMRBTable(MRB_TABLE_SIZE, MRB_TABLE_ASSOC);
 
-  std::unordered_map<uint64_t, uint64_t> pcTable; // record the last addr of PCs
+  LRUSetAssociativeCache<uint64_t>* pcTable = new LRUSetAssociativeCache<uint64_t>(PC_TABLE_SIZE, PC_TABLE_ASSOC);
 
   std::set<uint64_t> metaUsedPool;
 
@@ -239,6 +243,8 @@ public:
 
   std::string log_file_name;
   std::ofstream logfile;
+  std::string hint_file_name;
+  std::ofstream hint_file;
   bool warmup_complete = false;
 
   std::string toProfilePath(const std::string& full_path)
@@ -268,22 +274,36 @@ public:
     size_t second_last_dot = file_part.rfind('.', last_dot - 1);
     std::string base_name = (second_last_dot == std::string::npos) ? file_part.substr(0, last_dot) : file_part.substr(0, second_last_dot);
 
-    // std::string profile_path = "/mnt/data/lyq/Kairos/expr/hint/"+ base_name + ".txt";
     return base_name;
   }
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
     benchmark = champsim::global_trace_name;
-
+#ifdef ELABORATE_LOG
     log_file_name = "./" + toProfilePath(benchmark) + ".txt";
     cout << log_file_name << endl;
     logfile.open(log_file_name);
-    
-    if (!inTraining) {
+#endif
+
+    if (inTraining) {
+      llc_cache = llc;
+      llc_cache->set_available_ways(8);
+      cout << "Alloc 8 ways for cache" << endl;
+
+      metaTable = new ProphetMetaTable(META_TABLE_SIZE, 12);
+      metaTable->setpp(this);
+
+      hint_file_name = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(benchmark) + ".txt";
+      cout << "hint file: " << hint_file_name << endl;
+      hint_file.open(hint_file_name);
+      if (!hint_file) {
+        std::cerr << "Unable to open: " << hint_file_name << endl;
+        assert(false);
+      }
+    } else {
       std::string trace_path(benchmark);
       std::string file_name = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(trace_path) + ".txt";
-      // std::string file_name = "profile.txt";
       std::ifstream pc_file(file_name);
       if (!pc_file) {
         std::cerr << "Unable to open: " << file_name << endl;
@@ -310,11 +330,11 @@ public:
       }
 
       if (!disablePF) {
-        metaTable = new ProphetMetaTable(META_TABLE_SIZE, (16 - waysForCache) * 12);
+        metaTable = new ProphetMetaTable(4096 * 12 * (16 - waysForCache), 12);
         metaTable->setpp(this);
       }
       llc_cache->set_available_ways(waysForCache);
-      cout << "Alloc " << waysForCache << " for cache" << endl;
+      cout << "Alloc " << waysForCache << " ways for cache" << endl;
 
       while (std::getline(pc_file, line)) {
         std::istringstream lineStream(line);
@@ -368,8 +388,9 @@ public:
 
   uint64_t get_last(uint64_t ip)
   {
-    if (pcTable.find(ip) != pcTable.end()) {
-      return pcTable[ip];
+    auto pc_entry = pcTable->find(ip);
+    if (pc_entry) {
+      return pc_entry->data;
     } else {
       return 0;
     }

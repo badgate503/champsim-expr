@@ -9,12 +9,16 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#define MAX_RRPV 3
+
 using namespace std;
 
 /**
  * A class for printing beautiful data tables.
  * It's useful for logging the information contained in tabular structures.
  */
+
 class Table
 {
 public:
@@ -250,7 +254,6 @@ public:
 
   void set_debug_level(int debug_level) { this->debug_level = debug_level; }
 
-protected:
   /* should be overriden in children */
   virtual void write_data(Entry& entry, Table& table, int row) {}
 
@@ -283,6 +286,43 @@ protected:
 };
 
 template <class T>
+class FIFOSetAssociativeCache : public SetAssociativeCache<T>
+{
+  typedef SetAssociativeCache<T> Super;
+
+public:
+  FIFOSetAssociativeCache(int size, int num_ways, int debug_level = 0) : Super(size, num_ways, debug_level), fifo_ptr(this->num_sets, 0) {}
+
+protected:
+  /* @override */
+  virtual int select_victim(uint64_t index) override
+  {
+    int victim = fifo_ptr[index];
+    fifo_ptr[index] = (fifo_ptr[index] + 1) % this->num_ways;
+    return victim;
+  }
+  std::vector<uint32_t> fifo_ptr;
+};
+
+template <class T>
+class RandomSetAssociativeCache : public SetAssociativeCache<T>
+{
+  typedef SetAssociativeCache<T> Super;
+
+public:
+  RandomSetAssociativeCache(int size, int num_ways, int debug_level = 0) : Super(size, num_ways, debug_level), rng(std::random_device{}()) {}
+
+protected:
+  /* @override */
+  virtual int select_victim(uint64_t index)
+  {
+    static std::uniform_int_distribution<int> dist;
+    return dist(rng, decltype(dist)::param_type(0, this->num_ways - 1));
+  }
+  std::mt19937 rng;
+};
+
+template <class T>
 class LRUSetAssociativeCache : public SetAssociativeCache<T>
 {
   typedef SetAssociativeCache<T> Super;
@@ -293,6 +333,9 @@ public:
   void set_mru(uint64_t key) { *this->get_lru(key) = this->t++; }
 
   void set_lru(uint64_t key) { *this->get_lru(key) = 0; }
+
+  vector<vector<uint64_t>> lru;
+  uint64_t t = 1;
 
 protected:
   /* @override */
@@ -310,9 +353,136 @@ protected:
     int way = this->cams[index][tag];
     return &this->lru[index][way];
   }
+};
 
-  vector<vector<uint64_t>> lru;
-  uint64_t t = 1;
+template <class T>
+class SHIPSetAssociativeCache : public SetAssociativeCache<T>
+{
+  typedef SetAssociativeCache<T> Super;
+
+public:
+  SHIPSetAssociativeCache(int size, int num_ways, int debug_level = 0)
+      : Super(size, num_ways, debug_level), rrpv(this->num_sets, vector<uint64_t>(num_ways)), sampler((1 << LOG2_SAMPLER_SET), vector<SamplerEntry>(12)),
+        shct(SHCT_SIZE)
+  {
+  }
+  static const int SHCT_SIZE = 16384;
+  static const int SHCT_PRIME = 16381;
+  static const int LOG2_SAMPLER_SET = 8;
+  static const int SHCT_MAX = 7;
+
+  class SamplerEntry
+  {
+  public:
+    bool valid = false;
+    bool used = false;
+    uint64_t addr = 0;
+    uint64_t ip = 0;
+    uint64_t last_used = 0;
+  };
+  /*
+    0 - Sampled_set
+    else - follower
+  */
+  int which_set(uint64_t key)
+  {
+    int rem = key & ((1 << (15 - LOG2_SAMPLER_SET)) - 1);
+    return rem;
+  }
+
+  /* @override */
+  int select_victim(uint64_t index) override
+  {
+    vector<uint64_t>& rrpv_set = this->rrpv[index];
+    while (true) {
+      for (size_t i = 0; i < Super::num_ways; i++) {
+        if (rrpv_set[i] == MAX_RRPV) {
+          return i;
+        }
+      }
+      for (size_t i = 0; i < Super::num_ways; i++) {
+        if (rrpv_set[i] < MAX_RRPV) {
+          rrpv_set[i]++;
+        }
+      }
+    }
+  }
+
+  void touch(uint64_t key, uint64_t ip)
+  {
+    update_repl(key, ip);
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+    this->rrpv[index][way] = 0;
+  }
+
+  void set_default(uint64_t key, uint64_t ip)
+  { // for insertion
+    update_repl(key, ip);
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+    this->rrpv[index][way] = MAX_RRPV - 1;
+    if (shct[(ip & 0xFFFFFFFF) % SHCT_PRIME] == SHCT_MAX) {
+      this->rrpv[index][way] = MAX_RRPV;
+    }
+  }
+
+  void set_rrpv(uint64_t key, uint64_t rrpv_value)
+  { // for insertion
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+    this->rrpv[index][way] = rrpv_value;
+  }
+  
+  // 0 16 32 48 -> 0 1 2 3
+  void update_repl(uint64_t key, uint64_t ip)
+  {
+    if (which_set(key) == 0) { // is sampled
+      auto s_idx = (key >> (15 - LOG2_SAMPLER_SET)) & ((1 << LOG2_SAMPLER_SET) - 1);
+      SamplerEntry* se = nullptr;
+      for (auto& s : sampler[s_idx]) {
+        if (s.valid && s.addr == key) {
+          se = &s;
+          break;
+        }
+      }
+      if (se) {
+        auto SHCT_idx = (se->ip & 0xFFFFFFFF) % SHCT_PRIME;
+        if (shct[SHCT_idx] > 0)
+          shct[SHCT_idx]--;
+        se->used = true;
+        se->last_used = access_count++;
+      } else {
+        SamplerEntry* se_min = nullptr;
+        uint64_t min = -1;
+        for (auto& s : sampler[s_idx]) {
+          if (s.last_used < min) {
+            se_min = &s;
+
+            min = s.last_used;
+          }
+        }
+        if (!se_min->used) {
+          auto SHCT_idx = (se_min->ip & 0xFFFFFFFF) % SHCT_PRIME;
+          if (shct[SHCT_idx] < SHCT_MAX)
+            shct[SHCT_idx]++;
+        }
+        se_min->valid = true;
+        se_min->addr = key;
+        se_min->ip = ip;
+        se_min->used = false;
+        se_min->last_used = access_count++;
+      }
+    }
+  }
+
+  vector<vector<uint64_t>> rrpv;
+  vector<vector<SamplerEntry>> sampler; // 256 sampled * 12 way
+  vector<uint64_t> shct;
+  uint64_t access_count = 0;
 };
 
 template <class T>
@@ -324,8 +494,168 @@ public:
   SRRIPSetAssociativeCache(int size, int num_ways, int debug_level = 0) : Super(size, num_ways, debug_level), rrpv(this->num_sets, vector<uint64_t>(num_ways))
   {
   }
-  static const int MAX_RRPV = 7;
-  static const int DEFAULT_RRPV = 6;
+
+  /* @override */
+  int select_victim(uint64_t index) override
+  {
+    vector<uint64_t>& rrpv_set = this->rrpv[index];
+    while (true) {
+      for (size_t i = 0; i < Super::num_ways; i++) {
+        if (rrpv_set[i] == MAX_RRPV) {
+          return i;
+        }
+      }
+      for (size_t i = 0; i < Super::num_ways; i++) {
+        if (rrpv_set[i] < MAX_RRPV) {
+          rrpv_set[i]++;
+        }
+      }
+    }
+  }
+
+  void touch(uint64_t key) { this->decrement(key); }
+
+  void set_default(uint64_t key)
+  { // for insertion
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+    this->rrpv[index][way] = MAX_RRPV - 1;
+  }
+
+  void set_rrpv(uint64_t key, uint64_t rrpv_value)
+  { // for insertion
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+    this->rrpv[index][way] = rrpv_value;
+  }
+
+  void decrement(uint64_t key)
+  { // for touch
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+#ifdef TOUCH_DECREMENT
+    if (this->rrpv[index][way] > 0)
+      this->rrpv[index][way]--;
+#else
+    this->rrpv[index][way] = 0;
+#endif
+  }
+
+  vector<vector<uint64_t>> rrpv;
+};
+
+template <class T>
+class DRRIPSetAssociativeCache : public SetAssociativeCache<T>
+{
+  typedef SetAssociativeCache<T> Super;
+
+public:
+  DRRIPSetAssociativeCache(int size, int num_ways, int debug_level = 0) : Super(size, num_ways, debug_level), rrpv(this->num_sets, vector<uint64_t>(num_ways))
+  {
+  }
+  static const int BIP_CHANCE = 32;
+  static const int MAX_PSEL = 1023;
+  const int mask = (1 << 6) - 1;
+
+  /* @override */
+  int select_victim(uint64_t index) override
+  {
+    vector<uint64_t>& rrpv_set = this->rrpv[index];
+    while (true) {
+      for (size_t i = 0; i < Super::num_ways; i++) {
+        if (rrpv_set[i] == MAX_RRPV) {
+          return i;
+        }
+      }
+      for (size_t i = 0; i < Super::num_ways; i++) {
+        if (rrpv_set[i] < MAX_RRPV) {
+          rrpv_set[i]++;
+        }
+      }
+    }
+  }
+
+  /*
+    0 - SRRIP leader
+    1 - BIP leader
+    else - follower
+  */
+  int which_set(uint64_t key)
+  { // totally 32768 sets, select 2 leaders from each 512 sets
+    uint64_t index = key % this->num_sets;
+    if ((index & mask) == 0)
+      return 1; // srrip leader
+    else if ((index & mask) == 1)
+      return -1; // bip leader
+    else
+      return 0; // follower
+  }
+
+  void touch(uint64_t key) { this->decrement(key); }
+
+  void set_default(uint64_t key)
+  { // for insertion
+    int set_type = which_set(key);
+    if (set_type > 0) { // srrip leader
+      update_replacement(key, true);
+      if (psel > 0)
+        psel--;
+    } else if (set_type < 0) { // bip leader
+      update_replacement(key, false);
+      if (psel < MAX_PSEL)
+        psel++;
+    } else { // follower
+      update_replacement(key, psel <= MAX_PSEL / 2);
+    }
+  }
+
+  void update_replacement(uint64_t key, bool isSRRIP)
+  {
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+    if (isSRRIP) {
+      this->rrpv[index][way] = MAX_RRPV - 1;
+    } else {
+      this->rrpv[index][way] = MAX_RRPV;
+      bip_counter++;
+      if (bip_counter == BIP_CHANCE) {
+        bip_counter = 0;
+        this->rrpv[index][way] = MAX_RRPV - 1;
+      }
+    }
+  }
+
+  void decrement(uint64_t key)
+  { // for touch
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+#ifdef TOUCH_DECREMENT
+    if (this->rrpv[index][way] > 0)
+      this->rrpv[index][way]--;
+#else
+    this->rrpv[index][way] = 0;
+#endif
+  }
+  uint64_t bip_counter;
+  uint64_t psel;
+  vector<vector<uint64_t>> rrpv;
+};
+
+template <class T>
+class TTSRRIPSetAssociativeCache : public SetAssociativeCache<T>
+{
+  typedef SetAssociativeCache<T> Super;
+
+public:
+  TTSRRIPSetAssociativeCache(int size, int num_ways, int debug_level = 0)
+      : Super(size, num_ways, debug_level), rrpv(this->num_sets, vector<uint64_t>(num_ways)), cams2(this->num_sets)
+  {
+  }
 
 protected:
   /* @override */
@@ -346,31 +676,53 @@ protected:
     }
   }
 
-  //   void insert(uint64_t key, const srtpMetaTableEntry& data)
-  //   {
-  //     Super::insert(key, data);
-  //     this->set_default(key);
-  //   }
+  typename SetAssociativeCache<T>::Entry tt_insert(uint64_t key, const T& data, uint64_t target)
+  {
+    typename SetAssociativeCache<T>::Entry old_entry = SetAssociativeCache<T>::insert(key, data);
 
-  void touch(uint64_t key) { this->decrement(key); }
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    auto& cam = cams2[index];
+    if (old_entry.valid) {
+      // int num_erased = cam.erase(old_entry.tag);
+      cam.erase(old_entry.tag);
+      // assert(num_erased == 1);
+    }
+    cam[tag] = target;
 
-  void set_default(uint64_t key)
+    this->set_default(key, target);
+
+    return old_entry;
+  }
+
+  void touch(uint64_t trigger, uint64_t target) { this->decrement(trigger, target); }
+
+  void set_default(uint64_t trigger, uint64_t target)
   { // for insertion
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = trigger % this->num_sets;
+    uint64_t tag = trigger / this->num_sets;
+
     int way = this->cams[index][tag];
-    this->rrpv[index][way] = DEFAULT_RRPV;
+    uint64_t actual_target = cams2[index][tag];
+    if (actual_target == target)
+      this->rrpv[index][way] = MAX_RRPV - 1;
   }
 
-  void decrement(uint64_t key)
+  void decrement(uint64_t trigger, uint64_t target)
   { // for touch
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = trigger % this->num_sets;
+    uint64_t tag = trigger / this->num_sets;
     int way = this->cams[index][tag];
-    if (this->rrpv[index][way] > 0)
-      this->rrpv[index][way]--;
+    uint64_t actual_target = cams2[index][tag];
+    if (actual_target == target) {
+      if (this->rrpv[index][way] > 0)
+        this->rrpv[index][way]--;
+      // std::cout<<"Touched " << std::hex<< trigger << "->" << target <<std::dec << std::endl;
+    } else {
+      // std::cout<<"Fail to touch " << std::hex<< trigger << "->" << target <<std::dec << std::endl;
+    }
   }
-
+  vector<unordered_map<uint64_t, uint64_t>> cams2; // index, tag -> target
   vector<vector<uint64_t>> rrpv;
 };
 
@@ -663,14 +1015,14 @@ public:
   const int LLC_WAY = 12;
   const int LOG2_LLC_SET = 12 + 3;
   const int LOG2_BLOCK_SIZE = 6;
-  
+  const int LOG2_PAGE_SIZE = 12;
 
   const int HISTORY = 8;
   const int GRANULARITY = 8;
 
-  const int INF_RD = LLC_WAY * HISTORY - 1;
-  const int INF_ETR = (LLC_WAY * HISTORY / GRANULARITY) - 1;
-  const int MAX_RD = INF_RD - 22;
+  const int INF_RD = 64;
+  const int INF_ETR = 8;
+  const int MAX_RD = 64;
 
   const int PC_SIGNATURE_BITS = 12;
   const int TIMESTAMP_BITS = 8;
@@ -681,8 +1033,9 @@ public:
   struct SampledCacheLine {
     bool valid;
     uint64_t signature;
+    uint64_t page_signature;
     int timestamp;
-    SampledCacheLine(bool v = true, uint64_t s = 0, int t = 0) : valid(v), signature(s), timestamp(t) {};
+    SampledCacheLine(bool v = true, uint64_t s = 0, uint64_t ps = 0, int t = 0) : valid(v), signature(s), page_signature(ps), timestamp(t) {};
   };
 
   uint64_t CRC_HASH(uint64_t _blockAddress)
@@ -705,8 +1058,9 @@ public:
     return pc;
   }
 
-  uint64_t get_signature(uint64_t pc, uint64_t addr){
-    uint64_t key = pc << 32 | (addr & ((1 << 32) - 1));
+  uint64_t get_page_signature(uint64_t pc, uint64_t addr)
+  {
+    uint64_t key = pc ^ (addr >> LOG2_PAGE_SIZE);
     key = CRC_HASH(key);
     return key;
   }
@@ -772,11 +1126,11 @@ public:
   void mj_update(uint64_t full_addr, uint32_t set, uint32_t way, bool hit, uint64_t pc)
   {
     uint64_t pc_sig = get_pc_signature(pc, hit);
-    // set = full_addr % LLC_SET;
-    // uint64_t signature = get_signature(pc, full_addr & ((1 << 32) - 1));
+    uint64_t page_sig = get_page_signature(pc, full_addr & ((1 << 32) - 1));
 
     if (inf_track_cache.count(full_addr)) {
       uint64_t last_signature = inf_track_cache[full_addr].signature;
+      uint64_t last_page_signature = inf_track_cache[full_addr].page_signature;
       uint64_t last_timestamp = inf_track_cache[full_addr].timestamp;
       inf_track_cache[full_addr].timestamp = current_timestamp[set];
       int sample = time_elapsed(current_timestamp[set], last_timestamp);
@@ -789,9 +1143,16 @@ public:
         } else {
           rdp[last_signature] = sample;
         }
+        if (page_rdp.count(last_page_signature)) {
+          int init = page_rdp[last_page_signature];
+          page_rdp[last_page_signature] = max(init, sample);
+        } else {
+          page_rdp[last_page_signature] = sample;
+        }
       }
+
     } else {
-      SampledCacheLine temp(true, pc_sig, current_timestamp[set]);
+      SampledCacheLine temp(true, pc_sig, page_sig, current_timestamp[set]);
       inf_track_cache[full_addr] = temp;
     }
     current_timestamp[set] = increment_timestamp(current_timestamp[set]);
@@ -808,19 +1169,18 @@ public:
     etr_clock[set]++;
 
     if (way < LLC_WAY) {
-      if (!rdp.count(pc_sig)) {
-        etr[set][way] = 0;
+      if (page_rdp.count(page_sig)) {
+        etr[set][way] = page_rdp[page_sig] / GRANULARITY;
+      } else if (rdp.count(pc_sig)) {
+        etr[set][way] = rdp[pc_sig] / GRANULARITY;
       } else {
-        if (rdp[pc_sig] > MAX_RD) {
-          etr[set][way] = INF_ETR;
-        } else {
-          etr[set][way] = rdp[pc_sig] / GRANULARITY;
-        }
+        etr[set][way] = 0;
       }
     }
   }
 
   std::unordered_map<uint64_t, int> rdp;
+  std::unordered_map<uint64_t, int> page_rdp;
   std::vector<int> current_timestamp;
   std::vector<std::vector<int>> etr;
   std::vector<int> etr_clock;

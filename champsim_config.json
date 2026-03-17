@@ -1,5 +1,5 @@
 {
-    "executable_name": "champsim.ltp3.1",
+    "executable_name": "prismlog",
     "block_size": 64,
     "page_size": 4096,
     "heartbeat_frequency": 10000000,
@@ -27,7 +27,7 @@
             "dispatch_latency": 1,
             "schedule_latency": 0,
             "execute_latency": 0,
-            "branch_predictor": "perceptron",
+            "branch_predictor": "hashed_perceptron",
             "btb": "basic_btb"
         }
     ],
@@ -64,7 +64,7 @@
         "prefetch_as_load": false,
         "virtual_prefetch": false,
         "prefetch_activate": "LOAD,PREFETCH",
-        "prefetcher": "no"
+        "prefetcher": "ip_stride"
     },
     "L2C": {
         "sets": 2048,
@@ -79,7 +79,7 @@
         "prefetch_as_load": false,
         "virtual_prefetch": false,
         "prefetch_activate": "LOAD,PREFETCH",
-        "prefetcher": "ltp"
+        "prefetcher": "prism"
     },
     "ITLB": {
         "sets": 32,
@@ -139,7 +139,7 @@
         "wq_size": 32,
         "pq_size": 32,
         "mshr_size": 64,
-        "latency": 40,
+        "latency": 36,
         "max_tag_check": 1,
         "max_fill": 1,
         "prefetch_as_load": false,

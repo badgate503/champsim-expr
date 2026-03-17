@@ -31,4 +31,3 @@ def get_ipc(path):
                 rest = line[pos + len(prefix):].lstrip()
                 return float(rest.split()[0])   
     return 0.0
-

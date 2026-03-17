@@ -52,6 +52,7 @@ class miss_cause(Enum):
     OTHER = 9
 
     NO_MD_LAST_ADDR_REPEAT = 11
+    PF_DROPPED = 12
 
 
 import glob
@@ -68,19 +69,26 @@ print(f"Already analyzed {len(already_analyzed)} traces: {already_analyzed}")
 
 #all_counters = {}
 print(LOG_PATH)
-NPROC = 89
+NPROC = 500
 working_queue = []
 for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.txt')):
     
     t = os.path.splitext(os.path.basename(log_file))[0]
     if not args.traces:
         args.traces = []
+    
     if t in already_analyzed and t not in args.traces:
         continue
+    if len(args.traces) > 0 and t not in args.traces:
+        continue
+    with open(os.path.join(LOG_PATH, args.prefetcher, f"{t}.log"), "r") as f:
+
+        if not "ChampSim completed all CPUs" in f.read():
+            continue
     working_queue.append((t,log_file))
 
-print(f"Analyzing: {' '.join([t for t, _ in working_queue])}")
-
+print(f"Analyzing: {' '.join([t for t, _ in working_queue])}, total {len(working_queue)} traces.")
+input()
 
 def analyze_one(t, log_file):
     add = 0
@@ -99,6 +107,7 @@ def analyze_one(t, log_file):
     last_addr_is_0 = set()
     last_addr_is_addr = set()
     real_last = {}
+    issue_status = dict()
     #print(f"{CYAN}{t}{END}: Reading logs from {YELLOW}{log_file}{END}")
     with open(log_file) as f:
         if args.print:
@@ -131,30 +140,37 @@ def analyze_one(t, log_file):
                 ip = int(lst[4], 16)
                 #last_addr = int(lst[5], 16) # from pcTable
                 last_addr = real_last.get(ip) if real_last.get(ip) is not None else 0 # real last addr
-                triggers = [int(x, 16) for x in lst[6:]]
-
-                if addr not in misses:
-                    misses.add(addr)
-                    cause = miss_cause.TARGET_FIRST_APPEAR
-                elif late != "NO":
-                    cause = miss_cause.PF_TOO_LATE
+                triggers = [int(x, 16) for x in lst[6:-1]]
+                miss_type = lst[-1]
+                if miss_type == "PREFETCH":
+                    cause = miss_cause.OTHER
                 else:
-                    entries = md_targets.get(addr)
-                    if entries:
-                        if last_addr in entries.keys():   # YES
-                            if entries[last_addr] == "exist":
-                                cause = miss_cause.PF_TOO_EARLY
-                            elif entries[last_addr] == "CAPACITY":
-                                cause = miss_cause.EVICTED_MD_CAPACITY
-                            elif entries[last_addr] == "CONFLICT":
-                                cause = miss_cause.EVICTED_MD_CONFLICT
-                        else:
-                            cause = miss_cause.NO_TRIGGER
+                    if addr not in misses:
+                        misses.add(addr)
+                        cause = miss_cause.TARGET_FIRST_APPEAR
+                    elif late != "NO":
+                        cause = miss_cause.PF_TOO_LATE
                     else:
-                        if addr in last_addr_is_0:
-                            cause = miss_cause.NO_MD_LAST_ADDR_0
-                        elif addr in last_addr_is_addr:
-                            cause = miss_cause.NO_MD_LAST_ADDR_REPEAT
+                        entries = md_targets.get(addr)
+                        if entries:
+                            if last_addr in entries.keys():   # YES
+                                if entries[last_addr] == "exist":
+                                    if issue_status.get(addr) == "success" or issue_status.get(addr) == "merge":
+                                        cause = miss_cause.PF_TOO_EARLY
+                                    elif issue_status.get(addr) == "drop":
+                                        cause = miss_cause.PF_DROPPED
+                      
+                                elif entries[last_addr] == "CAPACITY":
+                                    cause = miss_cause.EVICTED_MD_CAPACITY
+                                elif entries[last_addr] == "CONFLICT":
+                                    cause = miss_cause.EVICTED_MD_CONFLICT
+                            else:
+                                cause = miss_cause.NO_TRIGGER
+                        else:
+                            if addr in last_addr_is_0:
+                                cause = miss_cause.NO_MD_LAST_ADDR_0
+                            elif addr in last_addr_is_addr:
+                                cause = miss_cause.NO_MD_LAST_ADDR_REPEAT
                 if warmed:
                     counters[cause.name] += 1
 
@@ -196,6 +212,9 @@ def analyze_one(t, log_file):
                 if args.print:
                     full_log.write(f"WARMUP DONE\n")
             elif lst[1] == "ISSUE":
+                status = lst[6]
+                issue_status[addr] = status
+
                 if args.print:
                     full_log.write(f"[{lst[0]:^12}] ISSUE ({lst[2]}, PC = {int(lst[3],16):#x}, trigger = {int(lst[4],16):#x}: issue {int(lst[5],16):#x})\n")
                     # full_log.write(f"[{lst[0]:^12}] ISSUE ({lst[2]}, PC = {int(lst[3],16):#x}, trigger = {int(lst[4],16):#x}: issue {int(lst[5],16):#x}, LA = {lst[6]}, {lst[7]}, PQ_index = {lst[8]}, DG = {lst[9]})\n")
@@ -205,7 +224,7 @@ def analyze_one(t, log_file):
             f.write(f"{k} {v}\n")
     #print(f"\n{CYAN}{t}{END}: Done.")
 
-max_workers = min(64,len(working_queue))
+max_workers = min(500,len(working_queue))
 if max_workers != 0:
     with ProcessPoolExecutor(max_workers = max_workers) as executor:
         futures = [executor.submit(analyze_one, x, y) for x, y in working_queue]

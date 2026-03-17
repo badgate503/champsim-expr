@@ -4,6 +4,7 @@
 #include "cache.h"
 #include "champsim.h"
 #include "modules.h"
+#include "bakshalipour_framework.h"
 #include <bits/stdc++.h>
 
 using namespace std;
@@ -324,12 +325,6 @@ public:
 
 private:
   size_t getSetIndex(uint64_t last_addr) { return last_addr % actual_set; }
-  // size_t getWayIndex(uint64_t last_addr)
-  // {
-  //   if (actual_way == 0)
-  //     return 0;
-  //   return hash_xor(last_addr, 10) % actual_way;
-  // }
 };
 
 class kairos : public champsim::modules::prefetcher
@@ -376,6 +371,8 @@ public:
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
+    uint32_t waysForCache = 8;
+    llc->set_available_ways(waysForCache);
     metadata.initialize(llc->NUM_SET);
   }
 

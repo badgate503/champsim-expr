@@ -17,11 +17,42 @@ TRACE_LIST = {}
 PF_LIST = [
     # "stride.no",
     # "stride.baseline",
-    # "baseline",
-    # "triangel",
-    # "prophet",
+    "baseline",
+    "basenew",
+    "baseline2.0",
+    "triangel",
+    "prophet",
     # "kairos",
     # "ptp",
+    # "ptp.m1",
+    # "ptp.m2",
+    # "ptp.m4",
+    # "ptp.m8",
+    # "ptp.m12",
+    # "ptp.m16",
+    # "ptp.a1",
+    # "ptp.a2",
+    # "ptp.a4",
+    # "ptp.a8",
+    # "ptp.a12",
+    # "ptp.a16",
+    # "ptpa8.lru4k",
+    # "ptpa8.lru8k",
+    # "ptpa8.lru16k",
+    # "ptpa8.lru32k",
+    # "ptpa8.lru64k",
+    # "ptpa8.lru128k",
+    # "ptpa8.srp4k",
+    # "ptpa8.srp8k",
+    # "ptpa8.srp16k",
+    # "ptpa8.srp32k",
+    # "ptpa8.srp64k",
+    # "ptpa8.srp128k",
+    # "ptpa8.srp1way",
+    # "ptpa8.srp2way",
+    # "ptpa8.srp3way",
+    # "ptpa8.srp4way",
+    # "ptp.a8",
     # "ltp1.0",
     # "ltp1.1",
     # "ltp2.0",
@@ -32,7 +63,7 @@ PF_LIST = [
     # "ltp3.1",
     # "ltp4.0",
     # "ltp4.1",
-    "ltp4.2",
+    # "ltp4.2",
     # "mjtp.trigger",
     # "mjtp.target",
     # "mjtp.inftrigger",
@@ -40,33 +71,97 @@ PF_LIST = [
     # "v1.mjtp.inftriggertarget",
     # "mjset.inf-tri",
     # "mjset.inf-tar",
-    "mjset.inf-tt",
+    # "mjset.inf-tt",
     # "nostore",
     # "notouch",
     # "storetouch",
     # "ctp1.0",
     # "ctp2.0",
-    "ctp3.0",
+    # "ctp3.0",
+    # "ctp3ct",
+    # "ctp3mt",
+    # "ctp3c2m",
+    # "ctpct",
+    # "ctpmt",
+    # "ctpc2m",
+    # "ctpc2minf",
+    # "ctpc2m1way",
+    # "ctpc2m2way",
     # "mjset.inf-yq",
     # "ltp.mf",
     # "srtp",
+    # "srtp.tri.2brrpv",
+    # "srtp.tri.3brrpv",
+    # "srtp.tt.2brrpv",
+    # "srtp.tt.3brrpv",
+    # "drtp.tt.2brrpv",
+    # "drtp.tt.3brrpv",
+    # "drlru",
+    # "drplru",
+    # "rndtp",
+    # "shtp",
+    # "mjyq",
+    # "retp",
+
+    # "degree2",
+    # "degree4",
+    # "degree6",
+    # "degree8",
+    # "look1d1",
+    # "look1d2",
+    # "look1d4",
+    # "look1d6",
+    # "look1d8",
+    # "look2d1",
+    # "look2d2",
+    # "look2d4",
+    # "look2d6",
+    # "look2d8",
+    # "look3d1",
+    # "look3d2",
+    # "look3d4",
+    # "look3d6",
+    # "look3d8",
+    # "look4d1",
+    # "look4d2",
+    # "look4d4",
+    # "look4d6",
+    # "look4d8",
+    
+    # "baseline.hit.nomd",
+    # "ftp.look1",
+    # "ftp.inf.6p",
+    # "ftp.inf.7p",
+    # "ftp.inf.8p",
+    # "ftp.inf.9p",
+    
+    # "basetri2",
+    # "basetri3",
+
+    # "prisml2d2",
+    # "prisml2d4",
 ]
 METRICS = [
     'IPC',
     'IPCI',
-    'L2C_PFIssue',
+    'L2C_PFfill',
     'L2C_Coverage',
     'L2C_Accuracy',
     'L2C_Overprediction',
     'L2C_Timeliness',
+    "L2C_PFhit",
     'DRAM_Traffic',
     'L1D_average_miss_latency',
     'L2C_average_miss_latency',
     'LLC_average_miss_latency',
     'L1-MPKI',
-    
     'L2-MPKI',
     'MPKI',
+    'GPM_useful_prefetches',
+    'GPM_late_prefetches',
+    'GPM_coverage',
+    'GPM_accuracy',
+    'GPM_laterate',
 ]
 BASELINE = "no"
 def get_measure(path, baseline_result = None):
@@ -80,6 +175,13 @@ def get_measure(path, baseline_result = None):
                 find = True
             if not find:
                 continue
+
+            for m in METRICS:
+                if line.startswith(m):
+                    counters[m] = re.search(rf'{m} \s*([0-9.]+)', line).group(1)
+                # if line.startswith("GPM_laterate"):
+                #     counters['GPM_laterate'] = re.search(r'GPM_laterate \s*([0-9.]+)', line).group(1)
+
             if line.startswith("CPU 0 cumulative IPC:"):
                 ipc = re.search(r'CPU 0 cumulative IPC:\s*([0-9.]+)', line).group(1)
 
@@ -172,7 +274,7 @@ def get_measure(path, baseline_result = None):
         counters['L1-MPKI'] = f"{((load_l1d['MISS'] + rfo_l1d['MISS']) / 200_000)}"
         counters['L2-MPKI'] = f"{((load_l2c['MISS'] + rfo_l2c['MISS']) / 200_000)}"
         counters['MPKI'] = f"{((load_llc['MISS'] + rfo_llc['MISS']) / 200_000)}"
-        
+        #counters["L2C_PFhit"] = f"{data_l2pf['HIT']}"
         if baseline_result is not None:
             if baseline_result['L2C_Demand_miss'] > 0:
                 counters['L2C_Coverage'] = f"{(baseline_result['L2C_Demand_miss'] - (load_l2c['MISS'] + rfo_l2c['MISS'])) / baseline_result['L2C_Demand_miss']}"
@@ -182,9 +284,10 @@ def get_measure(path, baseline_result = None):
         else:
             counters['L2C_Coverage'] = f"{0.0}"
             
-        if data_l2pf['ISSUED'] > 0:
-            counters['L2C_Accuracy'] = f"{((data_l2pf['USEFUL'] + data_l2pf['LATE']) / data_l2pf['ISSUED'])}"
-            counters['L2C_PFIssue'] = f"{data_l2pf['ISSUED']}"
+        
+        counters['L2C_PFfill'] = f"{data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']}"
+        if int(counters['L2C_PFfill']) > 0:
+            counters['L2C_Accuracy'] = f"{((data_l2pf['USEFUL'] + data_l2pf['LATE']) / int(counters['L2C_PFfill']))}"
         if data_l2pf['USEFUL'] > 0:
             counters['L2C_Timeliness'] = f"{(data_l2pf['USEFUL'] / (data_l2pf['USEFUL'] + data_l2pf['LATE']))}"
 

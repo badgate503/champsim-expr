@@ -69,7 +69,7 @@ void ship::update_replacement_state(uint32_t triggering_cpu, long set, long way,
     } else {
       match = std::min_element(s_set_begin, s_set_end, [](auto x, auto y) { return x.last_used < y.last_used; });
 
-      if (match->used) {
+      if (!match->used) {
         auto SHCT_idx = match->ip.slice_lower<32_b>().to<std::size_t>() % SHCT_PRIME;
         SHCT[triggering_cpu][SHCT_idx]++;
       }

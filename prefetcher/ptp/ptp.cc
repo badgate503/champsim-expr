@@ -113,8 +113,10 @@ void ptp::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8
         }
       } else {
         ptpMetaTableEntry temp_entry(block_addr);
-        if (enablePGO && enablePGLRU && profileReplTable.find(ip) != profileReplTable.end())
-          metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
+        if (enablePGO && enablePGLRU){ 
+          if (profileReplTable.find(ip) != profileReplTable.end())
+            metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
+        }
         else {
           if (!metaTable->insert(lastAddr, temp_entry, 1)) // lyq: profile中，prio = 0 ？
           {
@@ -127,36 +129,77 @@ void ptp::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8
 
     // 3.2 update the pcTable
     pcTable[ip] = block_addr;
-  } 
-  else {
-    // last addr = cur addr
-    if (!cache_hit) {
+  }
+
+  if (lastAddr == block_addr) {
+    if (!cache_hit && GPQ.size() > 0) {
       uint64_t triggerIP = 0;
-      for (auto it = GPQ.rbegin(); it != GPQ.rend(); ++it) {
-        if (!it->hit) {
-          // use first miss pc
-          triggerIP = it->ip;
-          break;
-        }
+      triggerIP = GPQ.rbegin()->ip;
+      
+      if (triggerIP) {
+        triggerIP = hash_xor(triggerIP);
+#if PC_META_TABLE_MODE == 0
+        GPMetaTable[triggerIP] = {block_addr, ++GPMtime};
+#elif PC_META_TABLE_MODE == 1
+        GPMetaTable->insert(triggerIP, {block_addr, ++GPMtime});
+        GPMetaTable->set_mru(triggerIP);
+#elif PC_META_TABLE_MODE == 2
+        auto victim = GPMetaTable->insert(triggerIP, {block_addr, ++GPMtime});
+        if (!victim.valid || victim.key != triggerIP) 
+          GPMetaTable->set_default(triggerIP);
+        else if (victim.valid && victim.key == triggerIP && victim.data.block_addr == block_addr)
+          GPMetaTable->touch(triggerIP);
+#endif
       }
-      if (!triggerIP && !GPQ.empty()) {
-        // use the oldest pc
-        triggerIP = GPQ.begin()->ip;
-      }
-      if (triggerIP)
-        GPMetaTable[triggerIP] = block_addr;
     }
   }
 
-  if (GPMetaTable.find(ip) != GPMetaTable.end()) {
-    pref_addr.push_back(GPMetaTable[ip] << LOG2_BLOCK_SIZE);
+  uint64_t lookupPC = hash_xor(ip);
+#if PC_META_TABLE_MODE == 0
+  if (GPMetaTable.find(lookupPC) != GPMetaTable.end()) {
+    pref_addr.push_back(GPMetaTable[lookupPC].block_addr << LOG2_BLOCK_SIZE);
+    GPM_issued_prefetches.insert(GPMetaTable[lookupPC].block_addr);
+    // GPMlogfile << GPMtime - GPMetaTable[lookupPC].last_touch_time << endl;
+    GPMetaTable[lookupPC].last_touch_time = GPMtime;
   }
+#elif PC_META_TABLE_MODE == 1
+  auto gpm_entry = GPMetaTable->find(lookupPC);
+  if (gpm_entry) {
+    GPMetaTable->set_mru(lookupPC);
+    pref_addr.push_back(gpm_entry->data.block_addr << LOG2_BLOCK_SIZE);
+    GPM_issued_prefetches.insert(gpm_entry->data.block_addr);
+    gpm_entry->data.last_touch_time = GPMtime;
+  }
+#elif PC_META_TABLE_MODE == 2
+  auto gpm_entry = GPMetaTable->find(lookupPC);
+  if (gpm_entry) {
+    GPMetaTable->touch(lookupPC);
+    pref_addr.push_back(gpm_entry->data.block_addr << LOG2_BLOCK_SIZE);
+    GPM_issued_prefetches.insert(gpm_entry->data.block_addr);
+    gpm_entry->data.last_touch_time = GPMtime;
+  }
+#endif
 
-  if (GPQ.size() < GPQ_SIZE) {
-    GPQ.push_back({ip, cache_hit, llc_cache->current_cycle()});
-  } else {
-    GPQ.pop_front();
-    GPQ.push_back({ip, cache_hit, llc_cache->current_cycle()});
+#if ONLY_TRIGGER_ON_MISS
+  if (!cache_hit) {
+#else
+  if (true) {
+#endif
+    bool already_in_queue = false;
+    for (const auto& entry : GPQ) {
+      if (entry.ip == ip) {
+        already_in_queue = true;
+        break;
+      }
+    }
+    if (!already_in_queue) {
+      if (GPQ.size() < GPQ_SIZE) {
+        GPQ.push_front({ip, llc_cache->current_cycle()});
+      } else {
+        GPQ.pop_back();
+        GPQ.push_front({ip, llc_cache->current_cycle()});
+      }
+    }
   }
 }
 
@@ -245,6 +288,16 @@ uint32_t ptp::prefetcher_cache_operate(champsim::address addr, champsim::address
     }
   }
 #endif
+
+  if (GPM_issued_prefetches.count(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE) && latepf != "NO") {
+    GPM_late_prefetches++;
+    GPM_issued_prefetches.erase(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
+  }
+  if (cache_hit && GPM_filled_prefetches.count(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE)) {
+    GPM_useful_prefetches++;
+    GPM_filled_prefetches.erase(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
+  }
+
   vector<uint64_t> prefetch_candidate;
 
   invoke_prefetcher(ip.to<uint64_t>(), addr.to<uint64_t>(), cache_hit, 0, prefetch_candidate);
@@ -265,6 +318,14 @@ uint32_t ptp::prefetcher_cache_operate(champsim::address addr, champsim::address
 
 uint32_t ptp::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
 {
+  if (prefetch && GPM_issued_prefetches.count(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE)) {
+    GPM_filled_prefetches.insert(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
+    GPM_issued_prefetches.erase(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
+  }
+  if (GPM_filled_prefetches.count(evicted_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE)) {
+    GPM_useless_prefetches++;
+    GPM_filled_prefetches.erase(evicted_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
+  }
   return metadata_in;
 }
 
@@ -273,6 +334,18 @@ void ptp::prefetcher_final_stats()
 #ifdef ELABORATE_LOG
   logfile.close();
 #endif
+
+#if PC_META_TABLE_MODE == 0
+  cout << "PC_table_size " << pcTable.size() << endl;
+  cout << "GPM_table_size " << GPMetaTable.size() << endl;
+#endif
+  cout << "GPM_late_prefetches " << GPM_late_prefetches << endl;  
+  cout << "GPM_useful_prefetches " << GPM_useful_prefetches << endl;
+  cout << "GPM_useless_prefetches " << GPM_useless_prefetches << endl;
+  uint64_t GPM_accurate_prefetches = GPM_late_prefetches + GPM_useful_prefetches;
+  uint64_t GPM_total_prefetches = GPM_late_prefetches + GPM_useful_prefetches + GPM_useless_prefetches;
+  cout << "GPM_accuracy " << (GPM_total_prefetches ? (double)GPM_accurate_prefetches / GPM_total_prefetches : 0) << endl;
+  cout << "GPM_laterate " << (GPM_accurate_prefetches ? (double)GPM_late_prefetches / GPM_accurate_prefetches : 0) << endl;
 }
 
 void ptp::prefetcher_cycle_operate() {}

@@ -28,9 +28,17 @@
 #define ENABLE_MRB false
 #define ENABLE_PGO false
 
-#define GPQ_SIZE 4
+#define GPQ_SIZE 8
+#define ONLY_TRIGGER_ON_MISS false
+#define PC_META_TABLE_MODE 2 // 0: map ; 1: lru ; 2: srrip
+// #define PC_META_TABLE_SIZE (4 * 1024 * 4 * 12)
+#define PC_META_TABLE_SIZE (4 * 1024)
+#define PC_META_TABLE_ASSOC 16
+
 
 class ptp;
+
+uint64_t hash_xor(uint64_t pc);
 
 struct SingleMetaEntry {
   uint64_t correlatedAddr;
@@ -202,8 +210,14 @@ public:
 
 struct GlobalPCEntry {
   uint64_t ip;
-  bool hit;
   uint64_t timestamp;
+};
+
+struct PCMetaEntry
+{
+  /* data */
+  uint64_t block_addr;
+  uint64_t last_touch_time;
 };
 
 class ptp : public champsim::modules::prefetcher
@@ -244,9 +258,21 @@ public:
   std::set<uint64_t> metaInsertedPool;
 
   std::map<uint64_t, uint64_t> prefetched_addr; // <block_addr, trigger pc>
-
+  
   std::deque<GlobalPCEntry> GPQ;
-  std::map<uint64_t, uint64_t> GPMetaTable; // <trigger pc, block_addr>
+#if PC_META_TABLE_MODE == 0
+  std::map<uint64_t, PCMetaEntry> GPMetaTable; // <trigger pc, block_addr>
+#elif PC_META_TABLE_MODE == 1
+  LRUSetAssociativeCache<PCMetaEntry>* GPMetaTable = new LRUSetAssociativeCache<PCMetaEntry>(PC_META_TABLE_SIZE, PC_META_TABLE_ASSOC);
+#elif PC_META_TABLE_MODE == 2
+  SRRIPSetAssociativeCache<PCMetaEntry>* GPMetaTable = new SRRIPSetAssociativeCache<PCMetaEntry>(PC_META_TABLE_SIZE, PC_META_TABLE_ASSOC);
+#endif
+
+  uint64_t GPMtime = 0;
+  std::ofstream GPMlogfile;
+  // stat
+  std::set<uint64_t> GPM_issued_prefetches, GPM_filled_prefetches;
+  uint64_t GPM_late_prefetches = 0, GPM_useful_prefetches = 0, GPM_useless_prefetches = 0;
 
   std::string log_file_name;
   std::ofstream logfile;
@@ -286,14 +312,20 @@ public:
   {
     llc_cache = llc;
     benchmark = champsim::global_trace_name;
+    cout << "Benchmark: " << benchmark << endl;
 
     log_file_name = "./" + toProfilePath(benchmark) + ".txt";
     cout << log_file_name << endl;
+#ifdef ELABORATE_LOG
     logfile.open(log_file_name);
+#endif
+    // GPMlogfile.open("./" + toProfilePath(benchmark) + "_gpm.txt");
 
     if (!ENABLE_PGO) {
       metaTable = new ptpMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
       metaTable->setpp(this);
+      llc_cache->set_available_ways(8);
+      cout << "Alloc " << 8 << " ways for cache" << endl;
     } else {
       std::string trace_path(benchmark);
       std::string file_name = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(trace_path) + ".txt";

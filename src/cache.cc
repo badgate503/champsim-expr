@@ -299,7 +299,7 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
     if (was_prefetched == "NO") {
       auto it = std::find_if(std::begin(internal_PQ), std::end(internal_PQ), matcher);
       if (it != internal_PQ.end()) {
-        was_prefetched = "L2PQ";
+        was_prefetched = "PQ";
         // internal_PQ.erase(it);
       }
     }

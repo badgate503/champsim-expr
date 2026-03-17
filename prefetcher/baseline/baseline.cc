@@ -3,188 +3,52 @@
 #include <cassert>
 #include <utility>
 
-void baseline::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8_t type, vector<uint64_t>& pref_addr)
-{
-  if (disablePF)
-    return;
-  if (ip == 0) {
-    return;
-  }
-
-  uint64_t block_addr = addr >> LOG2_BLOCK_SIZE;
-
-  if (trainTable.find(ip) == trainTable.end()) {
-    if (trainTable.size() < 128) {
-      trainTable[ip] = TrainEntry();
-    } else {
-      std::map<uint64_t, TrainEntry>::iterator minPointer = trainTable.begin();
-      for (std::map<uint64_t, TrainEntry>::iterator it = trainTable.begin(); it != trainTable.end(); ++it) {
-        if (it->second.solved < minPointer->second.solved) {
-          minPointer = it;
-        }
-      }
-      if (!minPointer->second.protect) {
-        trainTable.erase(minPointer);
-        trainTable[ip] = TrainEntry();
-      } else {
-        minPointer->second.protect = false;
-      }
-    }
-  } else {
-    if (cache_hit && prefetched_addr.find(block_addr) != prefetched_addr.end()) {
-      trainTable[prefetched_addr[block_addr]].solved += 1;
-      prefetched_addr.erase(block_addr);
-    }
-  }
-
-  if (enableInsertFilter && !inTraining && profileInsertTable.find(ip) == profileInsertTable.end())
-    return;
-
-  global_timestamp++;
-
-  // 1.search
-  // MetaEntry *metadata = &(metaTable->find(block_addr)->data);
-  baselineMetaTableEntry* metadata = metaTable->find(block_addr);
-  baselineMRBTableEntry* reuseData = mrbTable->find(block_addr);
-
-  uint64_t lastAddr = pcTable.find(ip) != pcTable.end() ? pcTable[ip] : 0;
-  if (lastAddr == block_addr)
-    return;
-  if (reuseData) {
-    if (reuseData->counter < MRB_MAX_COUNTER)
-      reuseData->counter++;
-    mrbTable->set_mru(block_addr);
-  }
-  if (metadata) {
-    metaTable->set_mru(block_addr);
-    if (profileUtiTable.find(block_addr) != profileUtiTable.end()) {
-      profileUtiTable[block_addr]++;
-    } else {
-      profileUtiTable[block_addr] = 0;
-    }
-    if (!metadata->used) {
-      metadata->used = true;
-      // trainTable[metadata->pc].meta_used++;
-    }
-  }
-
-  // 2.issue: metadata table
-  uint64_t lookup = block_addr;
-  int issued_by_metatable = issue_metatable(metaTable, lookup, ip, pref_addr);
-  if (enableMRB) {
-    int issued_by_reuse = issue_mrbtable(mrbTable, lookup, ip, pref_addr);
-  }
-  for (auto& prefetch_address : pref_addr) {
-    // llc_cache->prefetch_line(ip, addr, prefetch_address, FILL_L2, 0);
-    prefetched_addr[prefetch_address >> LOG2_BLOCK_SIZE] = ip;
-    trainTable[ip].issued += 1;
-  }
-
-  // 3.update
-  // 3.1 update the metaTable
-
-  if (lastAddr != 0) {
-    baselineMetaTableEntry* lastMeta = metaTable->find(lastAddr);
-    if (lastMeta) {
-      bool matched = false;
-      if (lastMeta->correlatedAddr == block_addr) {
-        matched = true;
-      }
-      if (!matched) {
-        uint64_t victimAddr = lastMeta->correlatedAddr;
-        baselineMetaTableEntry temp_entry(block_addr);
-        metaTable->insert(lastAddr, temp_entry, 1);
-
-        // victim buffer logic
-        if (profileReplTable[ip] > 1) {
-          baselineMRBTableEntry* victimMeta = mrbTable->find(lastAddr);
-          if (!victimMeta) {
-            baselineMRBTableEntry temp_entry(victimAddr);
-            mrbTable->insert(lastAddr, temp_entry);
-          } else {
-            if (victimMeta->correlatedAddr == victimAddr) {
-              if (victimMeta->counter < MRB_MAX_COUNTER) {
-                victimMeta->counter++;
-              }
-            } else {
-              baselineMRBTableEntry temp_entry(victimAddr);
-              mrbTable->insert(lastAddr, temp_entry);
-            }
-          }
-        }
-      }
-    } else {
-      baselineMetaTableEntry temp_entry(block_addr);
-      if (!inTraining && enablePGLRU && profileReplTable.find(ip) != profileReplTable.end())
-        metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
-      else {
-        if (!metaTable->insert(lastAddr, temp_entry, 1)) // lyq: profile中，prio = 0 ？
-        {
-          numEntriesinTable++;
-        }
-      }
-      trainTable[ip].meta_inserted++;
-    }
-  }
-
-  // 3.2 update the pcTable
-  pcTable[ip] = block_addr;
-}
-
-int baseline::issue_metatable(baselineMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
+int baseline::issue_metatable(baselineMetaTable* metaTable, uint64_t pc, uint64_t lookup, std::vector<uint64_t>& addresses)
 {
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
     baselineMetaTableEntry* candidate = metaTable->find(lookup);
+    meta_table_lookups++;
     if (candidate == nullptr)
       break;
-    addToUsedPool(lookup);
-    if (candidate->correlatedAddr != 0) {
-
-      if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
-        addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
-
-#ifdef ELABORATE_LOG
-        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << std::endl;
-#endif
+    meta_table_hits++;
+    if (candidate->correlated_addr != 0) {
+      if (!isAlreadyInQueue(addresses, candidate->correlated_addr)) {
+        addresses.push_back(candidate->correlated_addr);
+        meta_table_issued_prefetches++;
+        meta_table_prefetches.insert(candidate->correlated_addr);
         issued++;
+        int pq_index = -1;
+        champsim::address prefetch_addr{(candidate->correlated_addr) << LOG2_BLOCK_SIZE};
+        const bool success = prefetch_line(prefetch_addr, true, 0, &pq_index);
+        if (success) {
+#ifdef MISS_CLASS_LOG
+          logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlated_addr)
+                  << " success " << std::dec << pq_index << " " << std::endl;
+#endif
+        } else if (pq_index >= 0) {
+#ifdef MISS_CLASS_LOG
+          logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlated_addr)
+                  << " merge " << std::dec << pq_index << " " << std::endl;
+#endif
+        } else {
+#ifdef MISS_CLASS_LOG
+          logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlated_addr)
+                  << " drop " << std::dec << pq_index << " " << std::endl;
+#endif
+        }
       }
-      lookup = candidate->correlatedAddr;
-    }
+      lookup = candidate->correlated_addr;
+    } 
   }
   return issued;
 }
-
-int baseline::issue_mrbtable(baselineMRBTable* mrbTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
-{
-  std::cout << "deprecated,Should not issue" << std::endl;
-  int issued = 0;
-  for (int i = 0; i < globalDegree; i++) {
-    baselineMRBTableEntry* candidate = mrbTable->find(lookup);
-    if (candidate == nullptr)
-      break;
-    addToUsedPool(lookup);
-    if (candidate->correlatedAddr != 0) {
-      lookup = candidate->correlatedAddr;
-      if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
-#ifdef ELABORATE_LOG
-        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << std::endl;
-#endif
-        addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
-        issued++;
-      }
-    }
-  }
-  return issued;
-}
-
-void baseline::outPrefetcherPGOInfo() {}
 
 uint32_t baseline::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
-                                            uint32_t metadata_in, std::string latepf)
-{
-#ifdef ELABORATE_LOG
-  if (!warmup_complete && !llc_cache->warmup){
+                                              uint32_t metadata_in, std::string latepf)
+  {
+#ifdef MISS_CLASS_LOG
+  if (!warmup_complete && !llc_cache->warmup) {
     warmup_complete = true;
     logfile << "WARMUP COMPLETE" << std::endl;
   }
@@ -195,8 +59,19 @@ uint32_t baseline::prefetcher_cache_operate(champsim::address addr, champsim::ad
       // std::ofstream ofs(out_file, std::ios::app);  // append mode
       uint64_t last_addr = get_last(ip.to<uint64_t>());
       std::set<uint64_t> triggers = get_triggers(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
-
-      logfile << std::dec << llc_cache->current_cycle() << " MISS " << latepf << " " << std::hex << pf_addr << " " << ip << " " << last_addr;
+      std::string type_str = "";
+      if(type == access_type::PREFETCH) {
+        type_str = "PREFETCH";
+      } else if(type == access_type::LOAD) {
+        type_str = "LOAD";
+      } else if(type == access_type::RFO) {
+        type_str = "RFO";
+      } else if(type == access_type::WRITE) {
+        type_str = "WRITE";
+      } else if(type == access_type::TRANSLATION) {
+        type_str = "TRANSLATION";
+      }
+      logfile << std::dec << llc_cache->current_cycle() << " MISS " << latepf << " " << std::hex << pf_addr << " " << ip << " " << type_str << " "<< last_addr;
       for (uint64_t t : triggers) {
         logfile << " " << t;
       }
@@ -217,112 +92,185 @@ uint32_t baseline::prefetcher_cache_operate(champsim::address addr, champsim::ad
     }
   }
 #endif
-  vector<uint64_t> prefetch_candidate;
-
-  invoke_prefetcher(ip.to<uint64_t>(), addr.to<uint64_t>(), cache_hit, 0, prefetch_candidate);
-
-  if (prefetch_candidate.size() == 0)
-    return metadata_in;
-
-  for (int i = 0; i < prefetch_candidate.size(); i++) {
-    uint64_t p_addr = prefetch_candidate[i];
-
-    if (p_addr == 0)
-      break;
-    champsim::address prefetch_addr{p_addr};
-    const bool success = prefetch_line(prefetch_addr, true, 0);
+  if (meta_table_prefetches.count(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE)) {
+    meta_table_prefetches.erase(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
+    meta_table_accurate_prefetches++;
   }
+
+  uint64_t pc = ip.to<uint64_t>();
+  uint64_t block_addr = addr.to<uint64_t>() >> LOG2_BLOCK_SIZE;
+  vector<uint64_t> pref_addr;
+
+  if (pc == 0) {
+    return metadata_in;
+  }
+
+  // 1.search
+  uint64_t last_addr = 0;
+  auto pc_entry = pcTable->find(pc);
+  if (pc_entry) {
+    last_addr = pc_entry->data.front();
+  } else {
+#ifdef BASE_TRIGGER_NUM
+    std::deque<uint64_t> temp(BASE_TRIGGER_NUM, 0);
+    pcTable->insert(pc, temp);
+#else
+    std::deque<uint64_t> temp(1, 0);
+    pcTable->insert(pc, temp);
+#endif
+    pc_entry = pcTable->find(pc);
+  }
+  pcTable->set_mru(pc);
+
+  uint64_t lookup_key = block_addr;
+#if BASE_TRIGGER_NUM == 2
+  lookup_key ^= (pc_entry->data[0] << 5) ^ (pc_entry->data[0] >> 7);
+  lookup_key ^= lookup_key >> 16;
+#elif BASE_TRIGGER_NUM == 3
+  lookup_key ^= (pc_entry->data[0] << 5) ^ (pc_entry->data[0] >> 7) ^ (pc_entry->data[1] << 11) ^ (pc_entry->data[1] >> 13);
+  lookup_key ^= lookup_key >> 16;
+#elif BASE_TRIGGER_NUM == 4
+  lookup_key ^= (pc_entry->data[0] << 5) ^ (pc_entry->data[0] >> 7) ^ (pc_entry->data[1] << 11) ^ (pc_entry->data[1] >> 13) ^ (pc_entry->data[2] << 17)
+                ^ (pc_entry->data[2] >> 19);
+  lookup_key ^= lookup_key >> 16;
+#endif
+
+  baselineMetaTableEntry* metadata = metaTable->find(lookup_key);
+  if (metadata) {
+    metaTable->set_mru(lookup_key);
+    if (!metadata->used) {
+      metadata->used = true;
+    }
+  }
+
+  // 2.issue: metadata table
+  int issued_by_metatable = issue_metatable(metaTable, pc, lookup_key, pref_addr);
+
+  // 3.update
+  // 3.1 update the metaTable
+  if (last_addr != 0 && last_addr != block_addr) {
+    uint64_t insert_key = last_addr;
+#if BASE_TRIGGER_NUM == 2
+    insert_key ^= (pc_entry->data[1] << 5) ^ (pc_entry->data[1] >> 7);
+    insert_key ^= insert_key >> 16;
+#elif BASE_TRIGGER_NUM == 3
+    insert_key ^= (pc_entry->data[1] << 5) ^ (pc_entry->data[1] >> 7) ^ (pc_entry->data[2] << 11) ^ (pc_entry->data[2] >> 13);
+    insert_key ^= insert_key >> 16;
+#elif BASE_TRIGGER_NUM == 4
+    lookup_key ^= (pc_entry->data[1] << 5) ^ (pc_entry->data[1] >> 7) ^ (pc_entry->data[2] << 11) ^ (pc_entry->data[2] >> 13) ^ (pc_entry->data[3] << 17)
+                  ^ (pc_entry->data[3] >> 19);
+    insert_key ^= insert_key >> 16;
+#endif
+
+    baselineMetaTableEntry* last_meta = metaTable->find(insert_key);
+
+    if (last_meta) {
+      bool matched = false;
+      if (last_meta->correlated_addr == block_addr) {
+        matched = true;
+      } else {
+        uint64_t victim_addr = last_meta->correlated_addr;
+        baselineMetaTableEntry temp_entry(block_addr);
+#ifdef NOMD_WHEN_HIT
+        if (!cache_hit)
+          metaTable->insert(insert_key, temp_entry, 1);
+#else
+        metaTable->insert(insert_key, temp_entry);
+#endif
+      }
+    } else {
+      baselineMetaTableEntry temp_entry(block_addr);
+#ifdef NOMD_WHEN_HIT
+      if (!cache_hit)
+        if (!metaTable->insert(insert_key, temp_entry, 1))
+          numEntriesinTable++;
+#else
+      if (!metaTable->insert(insert_key, temp_entry)) {
+        numEntriesinTable++;
+      }
+#endif
+    }
+  }
+
+  // 3.2 update the pcTable
+  bool already_exist = false;
+  for (auto& a : pc_entry->data) {
+    if (a == block_addr) {
+      already_exist = true;
+      break;
+    }
+  }
+  if (!already_exist) {
+    pc_entry->data.push_front(block_addr);
+#ifdef BASE_TRIGGER_NUM
+    if (pc_entry->data.size() > BASE_TRIGGER_NUM)
+      pc_entry->data.pop_back();
+#else
+    if (pc_entry->data.size() > 1)
+      pc_entry->data.pop_back();
+#endif
+  }
+
+  
+
+  
   return metadata_in;
 }
 
 uint32_t baseline::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
 {
+  meta_table_prefetches.erase(evicted_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
   return metadata_in;
 }
 
 void baseline::prefetcher_final_stats()
 {
-#ifdef ELABORATE_LOG
+#ifdef MISS_CLASS_LOG
   logfile.close();
 #endif
-
-  std::ofstream f;
-  cout << hint_file << endl;
-  f.open(hint_file, std::ios::trunc);
-  f << numEntriesinTable << std::endl;
-
-  // if (numEntriesinTable == 0) {
-  //   f << "0" << std::endl;
-  // } else if (numEntriesinTable < 32768) {
-  //   f << "" << std::endl;
-  // } else if (numEntriesinTable < 65536) {
-  //   f << "65536" << std::endl;
-  // } else if (numEntriesinTable < 131072) {
-  //   f << "131072" << std::endl;
-  // } else if (numEntriesinTable < 262144) {
-  //   f << "262144" << std::endl;
-  // }
-
-  for (std::map<uint64_t, TrainEntry>::iterator it = trainTable.begin(); it != trainTable.end(); ++it) {
-    // PC, solved, issued, accuracy
-    uint64_t pc = it->first;
-    float accuracy = 0;
-    if (it->second.issued)
-      accuracy = 1.0 * it->second.solved / it->second.issued;
-    int priority = 0;
-    if (accuracy <= 0.15) {
-      priority = 0;
-    } else if (accuracy < 0.25) {
-      priority = 1;
-    } else if (accuracy < 0.50) {
-      priority = 2;
-    } else if (accuracy < 0.75) {
-      priority = 3;
-    } else {
-      priority = 4;
-    }
-    if (priority != 0)
-      f << std::hex << pc << std::dec << "," << priority << endl; // "," << accuracy;
-                                                                  // f << "," << it->second.solved << "," << it->second.issued << endl;
-  }
-  f.close();
+  cout << "MT_lookups " << meta_table_lookups << endl;
+  cout << "MT_hits " << meta_table_hits << endl;
+  cout << "MT_hitrate " << (meta_table_lookups ? (double)meta_table_hits / meta_table_lookups : 0) << endl;
+  cout << "MT_issuedpf " << meta_table_issued_prefetches << endl;
+  cout << "MT_accuratepf " << meta_table_accurate_prefetches << endl;
+  cout << "MT_accuracy " << (meta_table_issued_prefetches ? (double)meta_table_accurate_prefetches / meta_table_issued_prefetches : 0) << endl;
 }
 
 void baseline::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where)
 {
-#ifdef ELABORATE_LOG
-  logfile << std::dec << llc_cache->current_cycle() << " MSHRPFHIT " << std::hex << (addr.to<uint64_t>() >> LOG2_BLOCK_SIZE) << " " << ip << std::dec<< std::endl;
+#ifdef MISS_CLASS_LOG
+  logfile << std::dec << llc_cache->current_cycle() << " MSHRPFHIT " << std::hex << (addr.to<uint64_t>() >> LOG2_BLOCK_SIZE) << " " << ip << std::dec
+          << std::endl;
 #endif
 }
 
 void baseline::prefetcher_cycle_operate() {}
 
-bool baselineMetaTable::insert(uint64_t key, const baselineMetaTableEntry& data, uint8_t priority)
+bool baselineMetaTable::insert(uint64_t key, const baselineMetaTableEntry& data)
 {
-  reverse_metatable[data.correlatedAddr].insert(key);
-
+  reverse_metatable[data.correlated_addr].insert(key);
   Entry victim_entry = Super::insert(key, data);
   Super::set_mru(key);
   uint64_t index = key % this->num_sets;
   uint64_t tag = key / this->num_sets;
-  int way = this->cams[index][tag];
-  priority_pgo[index][way] = priority;
+  // int way = this->cams[index][tag];
   bool ret = false;
   if (victim_entry.valid) {
-    reverse_metatable[victim_entry.data.correlatedAddr].erase(victim_entry.key);
-#ifdef ELABORATE_LOG
+    reverse_metatable[victim_entry.data.correlated_addr].erase(victim_entry.key);
+#ifdef MISS_CLASS_LOG
     std::string reason;
     if (victim_entry.tag != tag) {
       reason = "CAPACITY";
     } else {
       reason = "CONFLICT";
     }
-    pp->logfile << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " " << victim_entry.data.correlatedAddr << std::endl;
+    prefetcher->logfile << std::dec << prefetcher->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " "
+                        << victim_entry.data.correlated_addr << std::endl;
 #endif
     ret = true;
   }
-#ifdef ELABORATE_LOG
-  pp->logfile << std::dec << pp->llc_cache->current_cycle() << " ADD " << std::hex << key << " " << data.correlatedAddr << std::endl;
+#ifdef MISS_CLASS_LOG
+  prefetcher->logfile << std::dec << prefetcher->llc_cache->current_cycle() << " ADD " << std::hex << key << " " << data.correlated_addr << std::endl;
 #endif
   return ret;
 }

@@ -30,7 +30,7 @@ parser.add_argument("--mode", "-m", choices=["ipc", "missclass"], required=True,
 parser.add_argument("--debug", "-d", choices=["default", "asan"], help="选择编译模式，Default 为开启 -g -O0; Asan 为开启 AddressSanitizer")
 parser.add_argument("--prefetcher", "-p" , required=True, help="选用的预取器名称")
 parser.add_argument("--exename", "-e", help="指定编译输出的可执行文件名称")
-parser.add_argument("--mj", "-j", choices=["tri","tar","tri-tar", "lyq", "inf-tri","inf-tar","inf-tri-tar", "inf-lyq"])
+parser.add_argument("--flag","-f", nargs="*")
 args = parser.parse_args()
 
 extra_cflags=[]
@@ -44,47 +44,27 @@ if args.debug != None:
         extra_ldflags.append("-fsanitize=address")
 
 if args.mode == "missclass":
-    extra_cflags.append("-DELABORATE_LOG")
+    extra_cflags.append("-DMISS_CLASS_LOG")
 
-if args.prefetcher == "mjtp":
-    if args.mj == "tri":
-        extra_cflags.append("-DMJ_TRIGGER")
-    elif args.mj == "tar":
-        extra_cflags.append("-DMJ_TARGET")
-    elif args.mj == "tri-tar":
-        extra_cflags.append("-DMJ_TRIGGER_TARGET")
-    elif args.mj == "lyq":
-        extra_cflags.append("-DMJ_LYQREP")
-    elif args.mj == "inf-tri":
-        extra_cflags.append("-DMJ_TRIGGER")
-        extra_cflags.append("-DINFMJ")
-    elif args.mj == "inf-tar":
-        extra_cflags.append("-DMJ_TARGET")
-        extra_cflags.append("-DINFMJ")
-    elif args.mj == "inf-tri-tar":
-        extra_cflags.append("-DMJ_TRIGGER_TARGET")
-        extra_cflags.append("-DINFMJ")
-    elif args.mj == "inf-lyq":
-        extra_cflags.append("-DMJ_LYQREP")
-        extra_cflags.append("-DINFMJ")
-    else:
-        print(f"Must use --mj to define behavior of MockingJay Replacement Policy")
-        sys.exit(1)
-    
+if args.prefetcher == "prophet":
+    if args.exename is not None and "profile" in args.exename:
+        extra_cflags.append("-DIS_TRAIN")
 
-
+if args.flag:
+    for f in args.flag:
+        extra_cflags.append(f"-D{f}")
 
 with open(f"../{args.config}.json", "r", encoding="utf-8") as f:
     data = json.load(f)
-    data["L1D"]["prefetcher"] = "no"
+    data["L1D"]["prefetcher"] = "ip_stride"
     data["L2C"]["prefetcher"] = args.prefetcher
     data["LLC"]["prefetcher"] = "no"
     if args.prefetcher == "mjtp":
         args.prefetcher += f".{args.mj}"
     if args.mode == "missclass":
-        data["executable_name"] = f"champsim.{args.prefetcher}.mc"
+        data["executable_name"] = f"{args.prefetcher}.mc"
     else:
-        data["executable_name"] = f"champsim.{args.prefetcher}"
+        data["executable_name"] = f"{args.prefetcher}"
     if args.exename is not None:
         data["executable_name"] = args.exename
 with open(f"../{args.config}.json", "w", encoding="utf-8") as f:
@@ -107,7 +87,7 @@ try:
          ["make",
         f"CXXFLAGS={' '.join(extra_cflags)}",
         f"LDFLAGS={' '.join(extra_ldflags)}",
-        "-j64"],
+        "-j256"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         cwd="..",

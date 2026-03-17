@@ -43,11 +43,19 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
   global_timestamp++;
 
   // 1.search
-  // MetaEntry *metadata = &(metaTable->find(block_addr)->data);
   ProphetMetaTableEntry* metadata = metaTable->find(block_addr);
   ProphetMRBTableEntry* reuseData = mrbTable->find(block_addr);
 
-  uint64_t lastAddr = pcTable.find(ip) != pcTable.end() ? pcTable[ip] : 0;
+  uint64_t lastAddr = 0;
+  auto pc_entry = pcTable->find(ip);
+  if (pc_entry) {
+    lastAddr = pc_entry->data;
+  } else {
+    pcTable->insert(ip, 0);
+    pc_entry = pcTable->find(ip);
+  }
+  pcTable->set_mru(ip);
+
   if (lastAddr == block_addr)
     return;
   if (reuseData) {
@@ -93,7 +101,7 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
       if (!matched) {
         uint64_t victimAddr = lastMeta->correlatedAddr;
         ProphetMetaTableEntry temp_entry(block_addr);
-        metaTable->insert(lastAddr, temp_entry, 1);
+        metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
 
         // victim buffer logic
         if (profileReplTable[ip] > 1) {
@@ -115,10 +123,11 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
       }
     } else {
       ProphetMetaTableEntry temp_entry(block_addr);
-      if (!inTraining && enablePGLRU && profileReplTable.find(ip) != profileReplTable.end())
-        metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
-      else {
-        if (!metaTable->insert(lastAddr, temp_entry, 1)) // lyq: profile中，prio = 0 ？
+      if (!inTraining && enablePGLRU) {
+        if (profileReplTable.find(ip) != profileReplTable.end())
+          metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
+      } else {
+        if (!metaTable->insert(lastAddr, temp_entry, 1)) // lyq: when profiling，prio = 1 ？
         {
           numEntriesinTable++;
         }
@@ -128,7 +137,7 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
   }
 
   // 3.2 update the pcTable
-  pcTable[ip] = block_addr;
+  pc_entry->data = block_addr;
 }
 
 int prophet::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
@@ -144,7 +153,8 @@ int prophet::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint6
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
         addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
 #ifdef ELABORATE_LOG
-        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << std::endl;
+        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr)
+                << std::endl;
 #endif
         issued++;
       }
@@ -166,7 +176,8 @@ int prophet::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t
       lookup = candidate->correlatedAddr;
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
 #ifdef ELABORATE_LOG
-        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << std::endl;
+        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr)
+                << std::endl;
 #endif
         addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
         issued++;
@@ -182,7 +193,7 @@ uint32_t prophet::prefetcher_cache_operate(champsim::address addr, champsim::add
                                            uint32_t metadata_in, std::string latepf)
 {
 #ifdef ELABORATE_LOG
-  if (!warmup_complete && !llc_cache->warmup){
+  if (!warmup_complete && !llc_cache->warmup) {
     warmup_complete = true;
     logfile << "WARMUP COMPLETE" << std::endl;
   }
@@ -242,6 +253,34 @@ void prophet::prefetcher_final_stats()
 #ifdef ELABORATE_LOG
   logfile.close();
 #endif
+  if (inTraining) {
+    
+    hint_file << numEntriesinTable << std::endl;
+
+    for (std::map<uint64_t, TrainEntry>::iterator it = trainTable.begin(); it != trainTable.end(); ++it) {
+      // PC, solved, issued, accuracy
+      uint64_t pc = it->first;
+      float accuracy = 0;
+      if (it->second.issued)
+        accuracy = 1.0 * it->second.solved / it->second.issued;
+      int priority = 0;
+      if (accuracy <= 0.15) {
+        priority = 0;
+      } else if (accuracy < 0.25) {
+        priority = 1;
+      } else if (accuracy < 0.50) {
+        priority = 2;
+      } else if (accuracy < 0.75) {
+        priority = 3;
+      } else {
+        priority = 4;
+      }
+      if (priority != 0)
+        hint_file << std::hex << pc << std::dec << "," << priority << endl; // "," << accuracy;
+                                                                    // f << "," << it->second.solved << "," << it->second.issued << endl;
+    }
+    hint_file.close();
+  }
 }
 
 void prophet::prefetcher_cycle_operate() {}
@@ -266,7 +305,8 @@ bool ProphetMetaTable::insert(uint64_t key, const ProphetMetaTableEntry& data, u
     } else {
       reason = "CONFLICT";
     }
-    pp->logfile << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " " << victim_entry.data.correlatedAddr << std::endl;
+    pp->logfile << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " "
+                << victim_entry.data.correlatedAddr << std::endl;
 #endif
     ret = true;
   }

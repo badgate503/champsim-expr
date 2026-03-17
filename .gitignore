@@ -4,7 +4,7 @@ _configuration.mk
 **/__pycache__/
 *.pyc
 
-bin/
+bin*/
 
 morton_filter/
 
@@ -17,7 +17,7 @@ tracer/pin/obj-intel64/
 
 vcpkg_installed/
 vcpkg/
-expr/result/data/
+expr/result/
 
 **/_build
 **/_doxygen
