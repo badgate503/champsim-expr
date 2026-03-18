@@ -88,7 +88,7 @@ for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.txt')):
     working_queue.append((t,log_file))
 
 print(f"Analyzing: {' '.join([t for t, _ in working_queue])}, total {len(working_queue)} traces.")
-input()
+
 
 def analyze_one(t, log_file):
     add = 0
@@ -108,6 +108,9 @@ def analyze_one(t, log_file):
     last_addr_is_addr = set()
     real_last = {}
     issue_status = dict()
+    demand_timestamp = 0
+    last_evict_timestamp = dict() # addr -> last evict timestamp
+    distances = []
     #print(f"{CYAN}{t}{END}: Reading logs from {YELLOW}{log_file}{END}")
     with open(log_file) as f:
         if args.print:
@@ -115,6 +118,7 @@ def analyze_one(t, log_file):
         for line in f:
             lst = line.strip().split(" ")
             if lst[1] == "HIT":
+                demand_timestamp += 1
                 addr = int(lst[2], 16)
                 ip = int(lst[3], 16)
                 #last_addr = int(lst[4], 16) # from pcTable
@@ -134,14 +138,16 @@ def analyze_one(t, log_file):
                     full_log.write(f"[{lst[0]:^12}] HIT (PC = {ip:#x}, access = {addr:#x}, last access = {last_addr:#x}, exist triggers: {[f'{x:#x}' for x in triggers]})\n")
                 real_last[ip] = addr
             if lst[1] == "MISS":
+                demand_timestamp += 1
                 miss += 1
                 late = lst[2]
                 addr = int(lst[3], 16)
                 ip = int(lst[4], 16)
                 #last_addr = int(lst[5], 16) # from pcTable
                 last_addr = real_last.get(ip) if real_last.get(ip) is not None else 0 # real last addr
-                triggers = [int(x, 16) for x in lst[6:-1]]
-                miss_type = lst[-1]
+                miss_type = lst[5]
+                triggers = [int(x, 16) for x in lst[6:]]
+                
                 if miss_type == "PREFETCH":
                     cause = miss_cause.OTHER
                 else:
@@ -155,10 +161,22 @@ def analyze_one(t, log_file):
                         if entries:
                             if last_addr in entries.keys():   # YES
                                 if entries[last_addr] == "exist":
-                                    if issue_status.get(addr) == "success" or issue_status.get(addr) == "merge":
-                                        cause = miss_cause.PF_TOO_EARLY
-                                    elif issue_status.get(addr) == "drop":
-                                        cause = miss_cause.PF_DROPPED
+                                    if issue_status.get(addr) is not None:
+                                        if issue_status.get(addr)[0] == "success" or issue_status.get(addr)[0] == "merge":
+                                            if last_evict_timestamp.get(addr) is not None:
+                                                if issue_status.get(addr)[2] < last_evict_timestamp.get(addr):
+                                                    cause = miss_cause.PF_TOO_EARLY
+                                                    distance = demand_timestamp - issue_status.get(addr)[1]
+                                                    distances.append(distance)
+                                                else:
+                                                    cause = miss_cause.PF_TOO_LATE
+                                            else:
+                                                cause = miss_cause.PF_TOO_LATE
+                                        elif issue_status.get(addr)[0] == "drop":
+                                            cause = miss_cause.PF_DROPPED
+                                    else:
+                                        pass
+                                        #print(f"Warning: no issue record for address {addr:#x} at demand timestamp {demand_timestamp}, but it is in md_targets with last_addr {last_addr:#x}. This may cause some inaccuracies in the analysis of too early prefetches.")
                       
                                 elif entries[last_addr] == "CAPACITY":
                                     cause = miss_cause.EVICTED_MD_CAPACITY
@@ -213,15 +231,23 @@ def analyze_one(t, log_file):
                     full_log.write(f"WARMUP DONE\n")
             elif lst[1] == "ISSUE":
                 status = lst[6]
-                issue_status[addr] = status
+                issue_status[int(lst[5],16)] = (status, demand_timestamp, lst[0]) # merge/drop/success
 
                 if args.print:
                     full_log.write(f"[{lst[0]:^12}] ISSUE ({lst[2]}, PC = {int(lst[3],16):#x}, trigger = {int(lst[4],16):#x}: issue {int(lst[5],16):#x})\n")
                     # full_log.write(f"[{lst[0]:^12}] ISSUE ({lst[2]}, PC = {int(lst[3],16):#x}, trigger = {int(lst[4],16):#x}: issue {int(lst[5],16):#x}, LA = {lst[6]}, {lst[7]}, PQ_index = {lst[8]}, DG = {lst[9]})\n")
-    
+            elif lst[1] == "CACHEFILL":
+                evicted_addr = int(lst[3],16)
+                last_evict_timestamp[evicted_addr] = lst[0]
+                if args.print:
+                    full_log.write(f"[{lst[0]:^12}] CACHEFILL (access = {int(lst[2],16):#x}, evicted = {int(lst[3],16):#x}, prefetch = {lst[4]})\n")
     with open(f"{RESULT_PATH}/data/{args.prefetcher}/{t}_breif.txt", "w") as f:
         for k,v in counters.items():
             f.write(f"{k} {v}\n")
+        f.write(f"AVG_DISTANCE {sum(distances)/len(distances) if len(distances)>0 else 'N/A'}\n")
+        f.write(f"MIN_DISTANCE {min(distances) if len(distances)>0 else 'N/A'}\n")
+        f.write(f"MAX_DISTANCE {max(distances) if len(distances)>0 else 'N/A'}\n")
+    #print(f"Analyzed {t}, total misses: {miss}, cause distribution: {counters}, average distance of too early prefetches: {sum(distances)/len(distances) if len(distances)>0 else 'N/A'}")
     #print(f"\n{CYAN}{t}{END}: Done.")
 
 max_workers = min(500,len(working_queue))
@@ -256,6 +282,8 @@ for path in glob.glob(f"./result/data/{args.prefetcher}/*.txt"):
             if not line:
                 continue
             key, value = line.split()
+            if key in ["AVG_DISTANCE", "MIN_DISTANCE", "MAX_DISTANCE"]:
+                continue
             data[key] = int(value)
     n+=1
     result[name] = data

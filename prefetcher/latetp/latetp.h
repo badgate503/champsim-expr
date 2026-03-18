@@ -17,7 +17,8 @@
 #include "cache.h"
 #include "champsim.h"
 
-#define DEFAULT_LOOKAHEAD 0
+#define DYNAMIC_DEGREE
+#define DEFAULT_LOOKAHEAD 2
 #define DEFAULT_DEGREE 2
 
 #define FILTER_MODE 0 // 0: no filter; 1: ideal; 2: directly map table 
@@ -187,6 +188,43 @@ public:
   };
   
   LRUSetAssociativeCache<PCTableEntry>* pcTable = new LRUSetAssociativeCache<PCTableEntry>(PC_TABLE_SIZE, PC_TABLE_ASSOC);
+
+
+  uint64_t global_degree = DEFAULT_DEGREE;
+  uint64_t late_prefetch_num = 0;
+  uint64_t accurate_prefetch_num = 0;
+  uint64_t useless_prefetch_num = 0;
+  uint64_t epoch_demand = 0;
+  std::set<uint64_t> unused_prefetches;
+#ifdef DYNAMIC_DEGREE
+  void tune_global_degree(){
+    float accuracy = 1.0 * accurate_prefetch_num / (accurate_prefetch_num + useless_prefetch_num);
+    float laterate = 1.0 * late_prefetch_num / accurate_prefetch_num;
+    int delta_degree = 0;
+    if (accuracy > 0.75){
+      if (laterate > 0.25)
+        delta_degree = 2;
+      else if (laterate > 0.125)
+        delta_degree = 1;
+    }else if (accuracy < 0.375){
+      delta_degree = -1;
+    }else if (accuracy < 0.25){
+      delta_degree = -2;
+    }else{
+      if (laterate > 0.25)
+        delta_degree = 1;
+    }
+    global_degree += delta_degree;
+    if (global_degree > 8)
+      global_degree = 8;
+    else if (global_degree < 1)
+      global_degree = 1;
+    late_prefetch_num = 0;
+    accurate_prefetch_num = 0;
+    useless_prefetch_num = 0;
+    epoch_demand = 0;
+  };
+#endif
 
 #if FILTER_MODE == 1
   std::set<uint64_t> pf_filter;

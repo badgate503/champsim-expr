@@ -18,7 +18,6 @@
 #include "champsim.h"
 
 #define PC_TRIGGER_PREFETCHING
-#define PC_TRIGGER_PREFETCHING_FEEDBACK_CONTROL
 #define PCQ_SIZE 8
 #define PC_META_TABLE_SIZE 4096 * 1 * 12
 #define PC_META_TABLE_ASSOC 12
@@ -28,7 +27,7 @@
 #define CONFLICT_META_TABLE_ASSOC 12
 
 #define INIT_RESIZE
-#define INIT_RESIZE_WINDOW 10000
+#define INIT_RESIZE_WINDOW 100000
 // #define RUNTIME_RESIZE
 // #define RUNTIME_RESIZE_WINDOW 100000000
 
@@ -132,6 +131,8 @@ public:
   CACHE* llc_cache = NULL;
   int debug_level = 0;
   int waysForCache = 8;
+  int waysForMarkov = 8;
+  uint64_t demand = 0;
   bool warmup_complete = false;
   std::string log_file_name;
   std::ofstream logfile;
@@ -163,11 +164,13 @@ public:
   uint64_t main_table_issued_prefetches = 0;
   uint64_t main_table_accurate_prefetches = 0;
   std::set<uint64_t> main_table_prefetches;
-
-#ifdef PC_TRIGGER_PREFETCHING
-  uint64_t lack_Trigger_Num = 0;
-  uint64_t unmodified_PC_Num = 0;
+  bool resized = false;
   bool enable_PC_Trigger_prefetching = false;
+#ifdef PC_TRIGGER_PREFETCHING
+  uint64_t lack_trigger = 0;
+  uint64_t lack_trigger_miss = 0;
+  uint64_t unmodified_PC = 0;
+  uint64_t inserted_PC = 0;
   std::deque<uint64_t> PCQ;
   SRRIPSetAssociativeCache<MetaTableEntry>* pcMetaTable = new SRRIPSetAssociativeCache<MetaTableEntry>(PC_META_TABLE_SIZE, PC_META_TABLE_ASSOC);
   // stat
@@ -176,6 +179,13 @@ public:
   uint64_t PCM_useless_prefetches = 0;
   std::set<uint64_t> PCM_issued_prefetches;
   std::set<uint64_t> PCM_filled_prefetches;
+  
+  void update_pc_metatable_size(){
+    if (inserted_PC >= 0.05 * INIT_RESIZE_WINDOW){
+      enable_PC_Trigger_prefetching = true;
+      waysForMarkov--;
+    }
+  }
 #endif
 
 #ifdef CONFLICT_PREFETCHING
@@ -192,10 +202,8 @@ public:
 #ifdef INIT_RESIZE
   uint64_t resize_useful_prefetch = 0;
   uint64_t resize_issued_prefetch = 0;
-  uint64_t resize_demand = 0;
   float resize_score, resize_llc_hit_rate, resize_useful_prefetch_rate;
-  bool init_resized = false;
-  void reset_metadata_size()
+  void update_main_metatable_size()
   {
     using hits_value_type = typename decltype(llc_cache->sim_stats.hits)::value_type;
     using misses_value_type = typename decltype(llc_cache->sim_stats.misses)::value_type;
@@ -207,16 +215,28 @@ public:
       resize_useful_prefetch_rate = (1.0 * resize_useful_prefetch / resize_issued_prefetch);
     else
       resize_useful_prefetch_rate = 0;
-    resize_score = 2 * resize_llc_hit_rate - 1 * resize_useful_prefetch_rate;
+    resize_score = 3 * resize_llc_hit_rate - 1 * resize_useful_prefetch_rate;
     if (resize_score > 0) {
-      // resize llc cache
       waysForCache = 14;
+      waysForMarkov = 2;
+    }
+  };
+#endif
+
+#ifdef PREFETCH_FILTER
+  PF_Filter* pf_filter = new PF_Filter(PF_FILTER_SIZE, PF_FILTER_ASSOC);
+#endif
+
+  void resize_cache(){
+    if (waysForCache != 8) {
       llc_cache->set_available_ways(waysForCache);
+    }
+    if (waysForMarkov != 8){
       // resize markov table
-      prismMetaTable* resized_metadata_table = new prismMetaTable(4096 * META_TABLE_ASSOC * 2, META_TABLE_ASSOC);
+      prismMetaTable* resized_metadata_table = new prismMetaTable(4096 * META_TABLE_ASSOC * waysForMarkov, META_TABLE_ASSOC);
       for (int i = 0; i < mainMetaTable->num_sets; i++) {
 
-        if (i % 8 == 0 || i % 8 == 1) {
+        if (i % 8 < waysForMarkov) {
           for (int j = 0; j < mainMetaTable->entries[i].size(); j++) {
             if (mainMetaTable->entries[i][j].valid)
               resized_metadata_table->insert_for_resize(mainMetaTable->entries[i][j].key, mainMetaTable->entries[i][j].data, mainMetaTable->rrpv[i][j]);
@@ -228,18 +248,10 @@ public:
       resized_metadata_table->access_count = mainMetaTable->access_count;
       delete mainMetaTable;
       mainMetaTable = resized_metadata_table;
-      cout << "Resize Metadata table. Alloc 2 ways for metadata!" << endl;
-    } else {
-      cout << "Donot Resize Metadata table. Alloc 8 ways for metadata!" << endl;
+      mainMetaTable->setpp(this);
+      cout << "Resize Metadata table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
     }
-    cout << "Unmod_PC " << unmodified_PC_Num << endl;
-    cout << "Lack_Tri " << lack_Trigger_Num << endl;
-  };
-#endif
-
-#ifdef PREFETCH_FILTER
-  PF_Filter* pf_filter = new PF_Filter(PF_FILTER_SIZE, PF_FILTER_ASSOC);
-#endif
+  }
 
   std::string ExtractWorkloadName(const std::string& full_path)
   {

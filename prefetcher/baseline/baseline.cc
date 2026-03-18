@@ -220,6 +220,10 @@ uint32_t baseline::prefetcher_cache_operate(champsim::address addr, champsim::ad
 uint32_t baseline::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
 {
   meta_table_prefetches.erase(evicted_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
+#ifdef MISS_CLASS_LOG
+  logfile << std::dec << llc_cache->current_cycle() << " CACHEFILL " << std::hex << (addr.to<uint64_t>() >> LOG2_BLOCK_SIZE) << " " << (evicted_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE) << (prefetch ? " PREFETCH" : " NOPREFETCH") << std::dec
+          << std::endl;
+#endif
   return metadata_in;
 }
 

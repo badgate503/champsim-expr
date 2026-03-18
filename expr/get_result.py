@@ -23,10 +23,14 @@ PF_LIST = [
     # "baseline.5way",
     # "baseline.6way",
     # "baseline.7way",
-    # "baseline",
+    "baseline.8way",
     # "triangel",
     # "prophet",
+    # "kairos",
     # "prism",
+    # "prismlog",
+    # "prismlog1w",
+    # "prismlog10w",
 
     # "pctp.a1",
     # "pctp.a2",
@@ -48,36 +52,13 @@ PF_LIST = [
     # "conftp2way",
     # "conftp3way",
     # "conftp4way",
+    # "conftp44",
+    # "conftp11",
 
     # "resize1w",
     # "resize10w",
     # "resize1m",
     # "resize10m",
-
-    "latetpl0d2",
-    "latetpl0d3",
-    "latetpl0d4",
-    "latetpl0d5",
-    "latetpl1d1",
-    "latetpl1d2",
-    "latetpl1d3",
-    "latetpl1d4",
-    "latetpl1d5",
-    "latetpl2d1",
-    "latetpl2d2",
-    "latetpl2d3",
-    "latetpl2d4",
-    "latetpl2d5",
-    "latetpl3d1",
-    "latetpl3d2",
-    "latetpl3d3",
-    "latetpl3d4",
-    "latetpl3d5",
-    "latetpl4d1",
-    "latetpl4d2",
-    "latetpl4d3",
-    "latetpl4d4",
-    "latetpl4d5",
 
     # "earlytp",
 
@@ -86,6 +67,57 @@ PF_LIST = [
     # "rndtp",
     # "srtp",
     # "drtp",
+
+    "ltpl2dynamic",
+    # "ltpl0d1",
+    # "ltpl0d2",
+    # "ltpl0d4",
+    # "ltpl0d6",
+    # "ltpl0d8",
+    # "ltpl1d1",
+    # "ltpl1d2",
+    # "ltpl1d4",
+    # "ltpl1d6",
+    # "ltpl1d8",
+    "ltpl2d1",
+    "ltpl2d2",
+    "ltpl2d4",
+    "ltpl2d6",
+    "ltpl2d8",
+    # "ltpl3d1",
+    # "ltpl3d2",
+    # "ltpl3d4",
+    # "ltpl3d6",
+    # "ltpl3d8",
+    # "ltpl4d1",
+    # "ltpl4d2",
+    # "ltpl4d4",
+    # "ltpl4d6",
+    # "ltpl4d8",
+    # "latetpl0d2",
+    # "latetpl0d3",
+    # "latetpl0d4",
+    # "latetpl0d5",
+    # "latetpl1d1",
+    # "latetpl1d2",
+    # "latetpl1d3",
+    # "latetpl1d4",
+    # "latetpl1d5",
+    # "latetpl2d1",
+    # "latetpl2d2",
+    # "latetpl2d3",
+    # "latetpl2d4",
+    # "latetpl2d5",
+    # "latetpl3d1",
+    # "latetpl3d2",
+    # "latetpl3d3",
+    # "latetpl3d4",
+    # "latetpl3d5",
+    # "latetpl4d1",
+    # "latetpl4d2",
+    # "latetpl4d3",
+    # "latetpl4d4",
+    # "latetpl4d5",
 ]
 METRICS = [
     'IPC',
@@ -114,9 +146,17 @@ METRICS = [
     'PCM_accuracy',
     'PCM_laterate',
     'MT_hitrate',
+    'MT_accuracy',
+    'MT_accuratepf',
     'CT_hitrate',
     'CT_accuracy',
-    'CT_accuratepf',
+    'CT_useful_prefetches',
+    'Unmod_PC',
+    'Insert_PC',
+    # 'Lack_Tri',
+    # 'Lack_TriMiss',
+    'Resize_L3Hit_rate',
+    'Resize_UPF_rate',
 ]
 BASELINE = "no"
 def get_measure(path, baseline_result = None):
@@ -133,7 +173,9 @@ def get_measure(path, baseline_result = None):
 
             for m in METRICS:
                 if line.startswith(m):
-                    counters[m] = re.search(rf'{m} \s*([0-9.]+)', line).group(1)
+                    if (result := re.search(rf'{m} \s*([0-9.]+)', line)) is not None:
+                        counters[m] = result.group(1)
+
                 # if line.startswith("PCM_laterate"):
                 #     counters['PCM_laterate'] = re.search(r'PCM_laterate \s*([0-9.]+)', line).group(1)
 
@@ -288,9 +330,9 @@ if __name__ == "__main__":
                 for pf in PF_LIST:
                     if os.path.exists(LOG_PATH +"/"+ pf + "/" + (trace+".log")):
                         print("Reading from: " + LOG_PATH +"/"+ pf + "/" + (trace+".log"))
-                        result = list(get_measure(LOG_PATH +"/"+ pf + "/" + (trace+".log"), baseline_result[trace]).values())
-                        f.write(trace + "," + pf + "," + ",".join(result) + "\n")
-                        average[pf].append(result)
+                        result = get_measure(LOG_PATH +"/"+ pf + "/" + (trace+".log"), baseline_result[trace])
+                        f.write(trace + "," + pf + "," + ",".join([result[m] for m in METRICS]) + "\n")
+                        average[pf].append(list(result.values()))
                     else:
                         print(f"{RED}Warning: Log file for trace {trace} with prefetcher {pf} not found.{END}")
             average_line = {pf: {m: "0" for m in METRICS} for pf in PF_LIST}

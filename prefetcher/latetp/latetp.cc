@@ -66,10 +66,6 @@ uint32_t latetp::prefetcher_cache_operate(champsim::address addr, champsim::addr
     }
   }
 #endif
-  if (meta_table_prefetches.count(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE)) {
-    meta_table_prefetches.erase(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
-    meta_table_accurate_prefetches++;
-  }
 
   uint64_t pc = ip.to<uint64_t>();
   uint64_t block_addr = addr.to<uint64_t>() >> LOG2_BLOCK_SIZE;
@@ -78,6 +74,24 @@ uint32_t latetp::prefetcher_cache_operate(champsim::address addr, champsim::addr
   if (pc == 0) {
     return metadata_in;
   }
+
+  epoch_demand++;
+  if (useful_prefetch){
+    accurate_prefetch_num++;
+  }
+  unused_prefetches.erase(block_addr);
+#ifdef DYNAMIC_DEGREE
+  if (epoch_demand >= 1024){
+    tune_global_degree();
+  }
+#endif
+
+  if (meta_table_prefetches.count(block_addr)) {
+    meta_table_prefetches.erase(block_addr);
+    meta_table_accurate_prefetches++;
+  }
+
+
 
   // 1.search
   uint64_t last_addr = 0;
@@ -112,7 +126,11 @@ uint32_t latetp::prefetcher_cache_operate(champsim::address addr, champsim::addr
   }
 
   // 2.issue: metadata table
+#ifdef DYNAMIC_DEGREE
+  int issued_by_metatable = issue_metatable(metaTable, lookup_key, global_degree, pref_addr);
+#else 
   int issued_by_metatable = issue_metatable(metaTable, lookup_key, pc_entry->data.degree, pref_addr);
+#endif
 
   // 3.update
   // 3.1 update the metaTable
@@ -184,6 +202,10 @@ uint32_t latetp::prefetcher_cache_fill(champsim::address addr, long set, long wa
     if (pc_entry) {
       pc_entry->data.filledPrefetchCount++;
     }
+    unused_prefetches.insert(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
+  }
+  if (unused_prefetches.count(evicted_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE)){
+    useless_prefetch_num++;
   }
 
 #if FILTER_MODE == 1
@@ -217,6 +239,8 @@ void latetp::prefetcher_late_prefetch(champsim::address addr, champsim::address 
   if (pc_entry) {
     pc_entry->data.latePrefetchCount++;
   }
+  late_prefetch_num++;
+  accurate_prefetch_num++;
 }
 
 void latetp::prefetcher_cycle_operate() {}
