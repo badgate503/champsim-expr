@@ -5,6 +5,7 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
 {
   std::vector<uint64_t> prefetch_addresses;
   second_chance_timestamp++;
+  global_timestamp++;
   uint64_t line_addr = (addr.to<uint64_t>() >> LOG2_BLOCK_SIZE); // Line addr
   uint64_t pc = ip.to<uint64_t>();
   if (ip.to<uint64_t>() == 0 || type == access_type::WRITE) {

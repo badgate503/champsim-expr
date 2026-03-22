@@ -17,11 +17,23 @@ TRACE_LIST = {}
 PF_LIST = [
     # "stride.no",
     # "stride.baseline",
-    "baseline",
-    "basenew",
-    "baseline2.0",
-    "triangel",
-    "prophet",
+    "baseline.2way",
+    "baseline.4way",
+    "baseline.8way",
+    # "basenew",
+    # "baseline2.0",
+    # "triangel",
+    # "prophet",
+
+    "resize10w",
+
+    # "resize_pr",
+
+    # "resize_tr",
+    # "resize_kr",
+
+    
+    
     # "kairos",
     # "ptp",
     # "ptp.m1",
@@ -317,7 +329,8 @@ if __name__ == "__main__":
             baseline_result = {}
             average = {pf:[] for pf in PF_LIST}
             for trace in TRACE_LIST[set_name]:
-                baseline_result[trace] = get_measure(LOG_PATH +"/"+ BASELINE + "/" + (trace+".log"))
+                if os.path.exists(LOG_PATH +"/"+ BASELINE + "/" + (trace+".log")):
+                    baseline_result[trace] = get_measure(LOG_PATH +"/"+ BASELINE + "/" + (trace+".log"))
                 
                 for pf in PF_LIST:
                     if os.path.exists(LOG_PATH +"/"+ pf + "/" + (trace+".log")):

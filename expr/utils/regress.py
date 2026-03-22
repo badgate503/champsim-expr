@@ -6,7 +6,6 @@ csv_files = [
     "../result/b1b8/google.csv",
     "../result/b1b8/ligra.csv",
     "../result/b1b8/ml.csv",
-    "../result/b1b8/spec06.csv",
     "../result/b1b8/spec17.csv"
 ]
 
@@ -29,23 +28,26 @@ for f in csv_files:
 
         row_2way = sub[sub["Prefetcher"] == "baseline.2way"]
         row_8way = sub[sub["Prefetcher"] == "baseline.8way"]
-        row_10w = sub[sub["Prefetcher"] == "resize10w"]
+        row_2t8 = sub[sub["Prefetcher"] == "resize8to2"]
         if len(row_2way) == 0 or len(row_8way) == 0:
             continue
 
         row_2way = row_2way.iloc[0]
         row_8way = row_8way.iloc[0]
-        row_10w = row_10w.iloc[0]
+        row_2t8 = row_2t8.iloc[0]
 
-        x = row_10w["Resize_L3Hit_rate"] 
-        y = row_10w["Resize_UPF_rate"]
+        x = row_2t8["Resize_L3Hit_rate"]
+        y = row_2t8["Resize_UPF_rate"]
 
         ipc2 = row_2way["IPCI"]
         ipc8 = row_8way["IPCI"]
 
-        label = ipc8 < ipc2
 
-        if abs(ipc8 - ipc2) < 0.03:
+        if max(ipc2,ipc8) == ipc2:
+            label = True
+        elif max(ipc2,ipc8) == ipc8:
+            label = False
+        if abs(ipc2-ipc8) < 0.03:
             continue
 
         dataset.append((t, x, y, label))
@@ -59,67 +61,60 @@ for d in dataset[:10]:
 uu = np.array([d[0] for d in dataset])
 X = np.array([[d[1],d[2]] for d in dataset])
 y = np.array([d[3] for d in dataset]).astype(float)
-
-
-
-lr = 0.1
-epochs = 100
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-w = np.zeros(X.shape[1])
-b = 0.0
-for epoch in range(epochs):
-
-    # 线性部分
-    logits = X @ w + b
-
-    # sigmoid
-    preds = sigmoid(logits)
-
-    # Binary Cross Entropy loss
-    loss = -np.mean(
-        y * np.log(preds + 1e-9) +
-        (1 - y) * np.log(1 - preds + 1e-9)
-    )
-
-    # 梯度
-    grad = preds - y
-
-    dw = X.T @ grad / len(X)
-    db = np.mean(grad)
-
-    # 更新
-    w -= lr * dw
-    b -= lr * db
-
-    if epoch % 100 == 0:
-        print(f"epoch {epoch}, loss = {loss:.6f}")
 def compute_accuracy(w, X, y):
     print("w =", w)
     logits = X @ w 
     pred_label = logits > 0
     #print(uu[pred_label != y])
     return np.mean(pred_label == y)
-print("\nFinal parameters:")
 
-print(f"w = {w}, b = {b}")
+
+best = 0
+ii, jj= 0, 0
+for i in range(-100,100):
+    for j in range(-100,100):
+    
+        print(f"Testing w = [{i}, {j}]")
+        res = compute_accuracy(np.array([i, j]), X, y)
+        if res > best:
+            best = res
+            print(f"New best accuracy: {best:.4f} with w = [{i}, {j}]")
+            ii, jj = i, j
+w = np.array([ii,jj])
+print(f"w = {ii},{jj}")
+
 
 print("\nFinal accuracy: {:.4f}".format(compute_accuracy(w, X, y)))
 
-# best = 0
-# ii, jj, kk = 0, 0,0
-# for i in range(-100,0):
-#     for j in range(0,100):
-#         for k in range(0,100):
-#             print(f"Testing w = [{i}, {j}, {k}]")
-#             res = compute_accuracy(np.array([i, j, k]), X, y)
-#             if res > best:
-#                 best = res
-#                 print(f"New best accuracy: {best:.4f} with w = [{i}, {j}, {k}]")
-#                 ii, jj, kk = i, j, k
-# print(f"\nBest accuracy: {best:.4f} with w = [{ii}, {jj}, {kk}]")
 
+# import matplotlib.pyplot as plt
+# import numpy as np
+
+# # print("\nFinal parameters:")
+
+# print(f"w = {w}")
+
+
+# X_zero = X[y == True]
+# X_pos = X[y == False]
+
+# # 画图
+# plt.figure(figsize=(6, 6))
+
+# plt.scatter(X_zero[:, 0], X_zero[:, 1], c='blue', label='0', s=15)
+# plt.scatter(X_pos[:, 0], X_pos[:, 1], c='green', label='1', s=15)
+
+# x_vals = np.linspace(X[:,0].min(), X[:,0].max(), 100)
+# y_vals = 10 * x_vals / 11
+# plt.plot(x_vals, y_vals, color='black', linewidth=2, label='x - y = 0')
+
+# plt.xlabel('x')
+# plt.ylabel('y')
+# plt.title('Scatter Plot')
+# plt.legend()
+# plt.grid(True)
+
+# plt.savefig("aa.png")
 
 
 

@@ -109,14 +109,14 @@
 
         // stack bar 颜色映射
         const reasonColors = {
-            'TARGET_FIRST_APPEAR': '#FF6384',
-            'PF_TOO_LATE': '#36A2EB',
-            'NO_TRIGGER': '#FFCE56',
+            'COMPULSORY_MISS': '#FF6384',
+            'LATE_PREFETCH': '#36A2EB',
+            'UNSEEN_CORRELATION': '#FFCE56',
             'NO_MD_LAST_ADDR_0': '#4BC0C0',
             'NO_MD_LAST_ADDR_REPEAT': '#9966FF',
             'PF_TOO_EARLY': '#FF9F40',
-            'EVICTED_MD_CAPACITY': '#C9CBCF',
-            'EVICTED_MD_CONFLICT': '#000000',
+            'METADATA_LOSS': '#C9CBCF',
+            'CORRELATION_COLLISION': '#4BC0C0',
             'Capacity': '#C9CBCF',
             'Conflict': '#B2DFDB',
             'PF_DROPPED': '#FF6384',
@@ -132,8 +132,8 @@
             parsed = window.allResults[group][filename];
             
             const counts = parsed;
-            counts['Capacity'] = (counts['EVICTED_MD_CAPACITY'] || 0);
-            counts['Conflict'] = (counts['EVICTED_MD_CONFLICT'] || 0);
+            counts['Capacity'] = (counts['METADATA_LOSS'] || 0);
+            counts['Conflict'] = (counts['CORRELATION_COLLISION'] || 0);
             counts['Last = 0'] = (counts['NO_MD_LAST_ADDR_0'] || 0);
             counts['Last = Cur'] = (counts['NO_MD_LAST_ADDR_REPEAT'] || 0);
             return counts;
@@ -205,11 +205,11 @@
             arrow(X, Y + 20, X, Y + DY - 25);
             node(X, Y + DY, 170, 50, 'Addr first appear?', 'diamond', { bold: true });
             arrow(X + 85, Y + DY, X + DX, Y + DY, 'YES');
-            node(X + DX + 100, Y + DY, 200, 38, 'TARGET_FIRST_APPEAR', 'rect');
+            node(X + DX + 100, Y + DY, 200, 38, 'COMPULSORY_MISS', 'rect');
             arrow(X, Y + DY + 25, X, Y + 2 * DY - 25, 'NO');
             node(X, Y + 2 * DY, 170, 50, 'In MSHR/PQ?', 'diamond', { bold: true });
             arrow(X + 85, Y + 2 * DY, X + DX, Y + 2 * DY, 'YES');
-            node(X + DX + 60, Y + 2 * DY, 130, 38, 'PF_TOO_LATE', 'rect');
+            node(X + DX + 60, Y + 2 * DY, 130, 38, 'LATE_PREFETCH', 'rect');
             arrow(X, Y + 2 * DY + 25, X, Y + 3 * DY - 25, 'NO');
             node(X, Y + 3 * DY, 200, 50, 'Added Last,Cur before?', 'diamond', { bold: true });
             arrow(X + 100, Y + 3 * DY, X + DX + 30, Y + 3 * DY + DY, 'YES');
@@ -230,7 +230,7 @@
 
             node(X - 290, Y + 4 * DY, 200, 50, 'Added X,Cur Before?', 'diamond', { bold: true });
             arrow(X - 390, Y + 4 * DY, X - 500, Y + 4 * DY, 'YES');
-            node(X - 570, Y + 4 * DY, 130, 38, 'NO_TRIGGER', 'rect');
+            node(X - 570, Y + 4 * DY, 130, 38, 'UNSEEN_CORRELATION', 'rect');
             arrow(X - 290, Y + 4 * DY + 25, X - 290, Y + 5 * DY - 25, 'NO');
             node(X - 290, Y + 5 * DY, 150, 50, 'Why Not?', 'diamond', { bold: true });
 
@@ -441,15 +441,16 @@
         }
         // 按指定顺序排序 allLabels
         const labelOrder = [
-            'TARGET_FIRST_APPEAR',
-            'PF_TOO_LATE',
-            'NO_TRIGGER',
+            'COMPULSORY_MISS',
+            'LATE_PREFETCH',
+            'UNSEEN_CORRELATION',
+            'METADATA_LOSS',
+            'CORRELATION_COLLISION',
             'NO_MD_LAST_ADDR_0',
             'NO_MD_LAST_ADDR_REPEAT',
             'PF_TOO_EARLY',
             'PF_DROPPED',
-            'EVICTED_MD_CAPACITY',
-            'EVICTED_MD_CONFLICT'
+            
         ];
         // 先按 labelOrder 排序，其余的按原顺序追加
         const allLabelsArr = Array.from(allLabels);
@@ -471,7 +472,7 @@
             label,
             data: normData.map(row => row[idx]),
             backgroundColor: [
-                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF', '#B2DFDB', '#F06292', '#FFD54F', '#81C784', '#BA68C8'
+                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF', '#4BC0C0', '#F06292', '#FFD54F', '#81C784', '#BA68C8'
             ][idx % 12],
             stack: 'stack1',
         }));

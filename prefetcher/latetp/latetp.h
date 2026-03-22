@@ -17,8 +17,8 @@
 #include "cache.h"
 #include "champsim.h"
 
-#define DYNAMIC_DEGREE
-#define DEFAULT_LOOKAHEAD 2
+// #define DYNAMIC_DEGREE
+#define DEFAULT_LOOKAHEAD 4
 #define DEFAULT_DEGREE 2
 
 #define FILTER_MODE 0 // 0: no filter; 1: ideal; 2: directly map table 
@@ -28,7 +28,8 @@
 #define PC_TABLE_SIZE 512
 #define PC_TABLE_ASSOC 16
 
-#define META_TABLE_SIZE 393216
+#define WAY_MARKOV 4
+#define META_TABLE_SIZE (4096 * 12 * WAY_MARKOV)
 #define META_TABLE_ASSOC 12
 
 class latetp;
@@ -135,7 +136,7 @@ public:
   std::string benchmark;
 
   uint32_t numEntriesinTable = 0;
-  int waysForCache = 8;
+  int waysForCache = 16-WAY_MARKOV;
 
   // stat
   uint64_t meta_table_lookups = 0;
@@ -269,7 +270,7 @@ public:
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
-    llc_cache->set_available_ways(8);
+    llc_cache->set_available_ways(waysForCache);
   }
 
   bool isAlreadyInQueue(std::vector<uint64_t>& addresses, uint64_t addr)

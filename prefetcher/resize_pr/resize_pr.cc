@@ -1,13 +1,13 @@
-#include "resize.h"
+#include "resize_pr.h"
 
 #include <cassert>
 #include <utility>
 
-int resize::issue_metatable(resizeMetaTable* metaTable, uint64_t pc, uint64_t lookup, std::vector<uint64_t>& addresses)
+int resize_pr::issue_metatable(resize_prMetaTable* metaTable, uint64_t pc, uint64_t lookup, std::vector<uint64_t>& addresses)
 {
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
-    resizeMetaTableEntry* candidate = metaTable->find(lookup);
+    resize_prMetaTableEntry* candidate = metaTable->find(lookup);
     meta_table_lookups++;
     if (candidate == nullptr)
       break;
@@ -29,9 +29,10 @@ int resize::issue_metatable(resizeMetaTable* metaTable, uint64_t pc, uint64_t lo
   return issued;
 }
 
-uint32_t resize::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
+uint32_t resize_pr::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
                                             uint32_t metadata_in, std::string latepf)
 {
+  if(disablePF) return metadata_in;
 #ifdef MISS_CLASS_LOG
   if (!warmup_complete && !llc_cache->warmup) {
     warmup_complete = true;
@@ -73,21 +74,9 @@ uint32_t resize::prefetcher_cache_operate(champsim::address addr, champsim::addr
   if (useful_prefetch){
     num_useful_prefetch++;
   }
-  if (!llc_cache->warmup && (type == access_type::LOAD || type == access_type::RFO)){
-    num_demand++;
-    if (!init_resized){
-      if (num_demand >= INIT_RESIZE_WINDOW){
-        reset_metadata_size();
-      }
-    }
-#ifdef REGULAR_RESIZE
-    else{
-      if (num_demand >= REGULAR_RESIZE_WINDOW){
-        reset_metadata_size();
-      }
-    }
-#endif
-  }
+  
+
+  // should resize
 
   uint64_t pc = ip.to<uint64_t>();
   uint64_t block_addr = addr.to<uint64_t>() >> LOG2_BLOCK_SIZE;
@@ -127,7 +116,7 @@ uint32_t resize::prefetcher_cache_operate(champsim::address addr, champsim::addr
   lookup_key ^= lookup_key >> 16;
 #endif
 
-  resizeMetaTableEntry* metadata = metaTable->find(lookup_key);
+  resize_prMetaTableEntry* metadata = metaTable->find(lookup_key);
   if (metadata) {
     // metaTable->set_mru(lookup_key);
     if (!metadata->used) {
@@ -154,7 +143,7 @@ uint32_t resize::prefetcher_cache_operate(champsim::address addr, champsim::addr
     insert_key ^= insert_key >> 16;
 #endif
 
-    resizeMetaTableEntry* last_meta = metaTable->find(insert_key);
+    resize_prMetaTableEntry* last_meta = metaTable->find(insert_key);
 
     if (last_meta) {
       bool matched = false;
@@ -163,7 +152,7 @@ uint32_t resize::prefetcher_cache_operate(champsim::address addr, champsim::addr
         metaTable->touch(insert_key);
       } else {
         uint64_t victim_addr = last_meta->correlated_addr;
-        resizeMetaTableEntry temp_entry(block_addr);
+        resize_prMetaTableEntry temp_entry(block_addr);
 #ifdef NOMD_WHEN_HIT
         if (!cache_hit)
           metaTable->insert(insert_key, temp_entry, 1);
@@ -172,7 +161,7 @@ uint32_t resize::prefetcher_cache_operate(champsim::address addr, champsim::addr
 #endif
       }
     } else {
-      resizeMetaTableEntry temp_entry(block_addr);
+      resize_prMetaTableEntry temp_entry(block_addr);
 #ifdef NOMD_WHEN_HIT
       if (!cache_hit)
         if (!metaTable->insert(insert_key, temp_entry, 1))
@@ -210,13 +199,13 @@ uint32_t resize::prefetcher_cache_operate(champsim::address addr, champsim::addr
   return metadata_in;
 }
 
-uint32_t resize::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
+uint32_t resize_pr::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
 {
   meta_table_prefetches.erase(evicted_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
   return metadata_in;
 }
 
-void resize::prefetcher_final_stats()
+void resize_pr::prefetcher_final_stats()
 {
 #ifdef MISS_CLASS_LOG
   logfile.close();
@@ -231,10 +220,10 @@ void resize::prefetcher_final_stats()
   cout << "Resize_L3Hit_rate " << llc_hit_rate << endl;
   cout << "Resize_UPF_rate " << useful_prefetch_rate << endl;
   cout << "Resize_Score " << resize_score << endl;
-  cout << "Resize_WayForCache_" << init_resize_way_for_cache << endl;
+  cout << "Resize_WayForCache_" << waysForCache << endl;
 }
 
-void resize::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where)
+void resize_pr::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where)
 {
 #ifdef MISS_CLASS_LOG
   logfile << std::dec << llc_cache->current_cycle() << " MSHRPFHIT " << std::hex << (addr.to<uint64_t>() >> LOG2_BLOCK_SIZE) << " " << ip << std::dec
@@ -242,9 +231,9 @@ void resize::prefetcher_late_prefetch(champsim::address addr, champsim::address 
 #endif
 }
 
-void resize::prefetcher_cycle_operate() {}
+void resize_pr::prefetcher_cycle_operate() {}
 
-bool resizeMetaTable::insert(uint64_t key, const resizeMetaTableEntry& data)
+bool resize_prMetaTable::insert(uint64_t key, const resize_prMetaTableEntry& data)
 {
   reverse_metatable[data.correlated_addr].insert(key);
   Entry victim_entry = Super::insert(key, data);
@@ -275,7 +264,7 @@ bool resizeMetaTable::insert(uint64_t key, const resizeMetaTableEntry& data)
   return ret;
 }
 
-bool resizeMetaTable::insert(uint64_t key, const resizeMetaTableEntry& data, uint64_t rrpv_value)
+bool resize_prMetaTable::insert(uint64_t key, const resize_prMetaTableEntry& data, uint64_t rrpv_value)
 {
   reverse_metatable[data.correlated_addr].insert(key);
   Entry victim_entry = Super::insert(key, data);

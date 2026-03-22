@@ -55,20 +55,36 @@ PF_LIST = [
     # "conftp44",
     # "conftp11",
 
+    # "tri2way2",
+
+    "resize_tr",
+    # "resize_pr",
+    # "resize_kr",
     # "resize1w",
     # "resize10w",
     # "resize1m",
     # "resize10m",
 
+    # "resize_regular8",
+    # "resize_regular2",
+    "resize1to8",
+    "resize8to1",
+    "resize2to8",
+    "resize8to2",
+    
     # "earlytp",
 
     # "filtetp",
+    # "filtetp2",
     # "shtp",
     # "rndtp",
     # "srtp",
     # "drtp",
 
-    "ltpl2dynamic",
+    # "ltpl2dyn",
+    # "ltpl3dyn",
+    # "ltpl4dyn",
+    # "ltpl2dynamic",
     # "ltpl0d1",
     # "ltpl0d2",
     # "ltpl0d4",
@@ -79,11 +95,11 @@ PF_LIST = [
     # "ltpl1d4",
     # "ltpl1d6",
     # "ltpl1d8",
-    "ltpl2d1",
-    "ltpl2d2",
-    "ltpl2d4",
-    "ltpl2d6",
-    "ltpl2d8",
+    # "ltpl2d1",
+    # "ltpl2d2",
+    # "ltpl2d4",
+    # "ltpl2d6",
+    # "ltpl2d8",
     # "ltpl3d1",
     # "ltpl3d2",
     # "ltpl3d4",
@@ -158,7 +174,7 @@ METRICS = [
     'Resize_L3Hit_rate',
     'Resize_UPF_rate',
 ]
-BASELINE = "no"
+BASELINE = "baseline4w"
 def get_measure(path, baseline_result = None):
     with open(path, "r") as f:
         lines = f.readlines()

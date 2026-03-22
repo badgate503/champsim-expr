@@ -89,7 +89,14 @@ public:
 
   filtetpMetaTable* metaTable = new filtetpMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
 
-  LRUSetAssociativeCache<std::deque<uint64_t>>* pcTable = new LRUSetAssociativeCache<std::deque<uint64_t>>(PC_TABLE_SIZE, PC_TABLE_ASSOC);
+  struct PCTableEntry
+  {
+    int hit_count;
+    std::deque<uint64_t> addrHistory;
+    PCTableEntry(bool hit = false) : hit_count(hit ? 1 : 0) {};
+  };
+  
+  LRUSetAssociativeCache<PCTableEntry>* pcTable = new LRUSetAssociativeCache<PCTableEntry>(PC_TABLE_SIZE, PC_TABLE_ASSOC);
 
   struct PCEntry {
     uint64_t miss_cnt;
@@ -154,7 +161,7 @@ public:
   {
     auto pc_entry = pcTable->find(ip);
     if (pc_entry) {
-      return pc_entry->data.front();
+      return pc_entry->data.addrHistory.front();
     } else {
       return 0;
     }

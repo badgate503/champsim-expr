@@ -22,7 +22,7 @@
 
 #define PC_TABLE_SIZE 512
 #define PC_TABLE_ASSOC 16
-#define WAY_MARKOV 8
+#define WAY_MARKOV 4
 #define META_TABLE_SIZE (4096 * 12 * WAY_MARKOV)
 #define META_TABLE_ASSOC 12
 #define GLOBAL_DEGREE 1 

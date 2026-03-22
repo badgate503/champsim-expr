@@ -94,10 +94,14 @@ uint32_t filtetp::prefetcher_cache_operate(champsim::address addr, champsim::add
   uint64_t last_addr = 0;
   auto pc_entry = pcTable->find(pc);
   if (pc_entry) {
-    last_addr = pc_entry->data.front();
+    last_addr = pc_entry->data.addrHistory.front();
+    if (cache_hit && !useful_prefetch) {
+      pc_entry->data.hit_count += 1;
+    } else {
+      pc_entry->data.hit_count = 0;
+    }
   } else {
-    std::deque<uint64_t> temp(1, 0);
-    pcTable->insert(pc, temp);
+    pcTable->insert(pc, {cache_hit});
     pc_entry = pcTable->find(pc);
   }
   pcTable->set_mru(pc);
@@ -130,27 +134,30 @@ uint32_t filtetp::prefetcher_cache_operate(champsim::address addr, champsim::add
         uint64_t victim_addr = last_meta->correlated_addr;
         filtetpMetaTableEntry temp_entry(block_addr);
 
-        if (cache_hit && !useful_prefetch) {
-          if (!hit_hist[pc].pass) {
-            metaTable->insert(insert_key, temp_entry);
-          }
-        } else {
+        // if (cache_hit && !useful_prefetch) {
+        //   if (!hit_hist[pc].pass) {
+        //     metaTable->insert(insert_key, temp_entry);
+        //   }
+        // } else {
+        //   metaTable->insert(insert_key, temp_entry);
+        // }
+        if (!cache_hit || useful_prefetch || pc_entry->data.hit_count < 4)
           metaTable->insert(insert_key, temp_entry);
-        }
-        // metaTable->insert(insert_key, temp_entry);
       }
     } else {
       filtetpMetaTableEntry temp_entry(block_addr);
 
-      if (cache_hit && !useful_prefetch) {
-        if (!hit_hist[pc].pass) {
-          if (!metaTable->insert(insert_key, temp_entry))
-            numEntriesinTable++;
-        }
-      } else {
-        if (!metaTable->insert(insert_key, temp_entry))
-          numEntriesinTable++;
-      }
+      // if (cache_hit && !useful_prefetch) {
+      //   if (!hit_hist[pc].pass) {
+      //     if (!metaTable->insert(insert_key, temp_entry))
+      //       numEntriesinTable++;
+      //   }
+      // } else {
+      //   if (!metaTable->insert(insert_key, temp_entry))
+      //     numEntriesinTable++;
+      // }
+      if (!cache_hit || useful_prefetch || pc_entry->data.hit_count < 4)
+        metaTable->insert(insert_key, temp_entry);
 
       // if (!metaTable->insert(insert_key, temp_entry)) {
       //   numEntriesinTable++;
@@ -160,20 +167,20 @@ uint32_t filtetp::prefetcher_cache_operate(champsim::address addr, champsim::add
 
   // 3.2 update the pcTable
   bool already_exist = false;
-  for (auto& a : pc_entry->data) {
+  for (auto& a : pc_entry->data.addrHistory) {
     if (a == block_addr) {
       already_exist = true;
       break;
     }
   }
   if (!already_exist) {
-    pc_entry->data.push_front(block_addr);
+    pc_entry->data.addrHistory.push_front(block_addr);
 #ifdef BASE_TRIGGER_NUM
-    if (pc_entry->data.size() > BASE_TRIGGER_NUM)
-      pc_entry->data.pop_back();
+    if (pc_entry->data.addrHistory.size() > BASE_TRIGGER_NUM)
+      pc_entry->data.addrHistory.pop_back();
 #else
-    if (pc_entry->data.size() > 1)
-      pc_entry->data.pop_back();
+    if (pc_entry->data.addrHistory.size() > 1)
+      pc_entry->data.addrHistory.pop_back();
 #endif
   }
 

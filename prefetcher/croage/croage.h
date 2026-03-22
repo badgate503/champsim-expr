@@ -15,7 +15,7 @@ using namespace std;
 
 /*Define Irregular memory access matching prefetcher*/
 #define CACHE_SET 4096
-#define CACHE_WAY 10
+#define CACHE_WAY 16
 #define HT_SET 4096
 #define HT_WAY 48
 
@@ -793,7 +793,7 @@ class croage : public champsim::modules::prefetcher
   uint64_t useful_entry_number = 0;
   uint64_t useless_entry_number = 0;
 
-  static constexpr int cache_set = 2048;
+  static constexpr int cache_set = 4096;
   static constexpr int cache_way = 16;
   const int bit_mask = HT_SET - 1;
   const int max_degree = 4;
@@ -1250,18 +1250,18 @@ public:
 
           if (std::abs(static_cast<int64_t>(addr) - static_cast<int64_t>(last_addr)) < 64) {
             tem_up(last_addr, addr, pc, t_unit->useful_tu); // tem module try to record the in-page pattern
-            t_unit->bo.update(addr - last_addr);
+            // t_unit->bo.update(addr - last_addr);
           } else {
             tem_up(last_addr, addr, pc, t_unit->useful_tu);
           }
         }
       }
     }
-    if (!cache_hit || corres_cache_is_pf(addr)) {
-      if (std::abs(static_cast<int64_t>(addr) - static_cast<int64_t>(last_addr)) < 64) {
-        bo.update(addr - last_addr);
-      }
-    }
+    // if (!cache_hit || corres_cache_is_pf(addr)) {
+    //   if (std::abs(static_cast<int64_t>(addr) - static_cast<int64_t>(last_addr)) < 64) {
+    //     bo.update(addr - last_addr);
+    //   }
+    // }
     last_addr = addr;
   }
 

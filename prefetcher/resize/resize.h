@@ -17,14 +17,19 @@
 #include "cache.h"
 #include "champsim.h"
 
-#define INIT_WINDOW 100000
+// #define REGULAR_RESIZE
+#define INIT_RESIZE_WINDOW 100000
+#define REGULAR_RESIZE_WINDOW 10000000
+#define INIT_WAY_MARKOV 1
+#define MIN_WAY_MARKOV 1
+#define MAX_WAY_MARKOV 8
+
 #define BASE_TRIGGER_NUM 1
 // #define MISS_CLASS_LOG
 
 #define PC_TABLE_SIZE 512
 #define PC_TABLE_ASSOC 16
-#define WAY_MARKOV 8
-#define META_TABLE_SIZE (4096 * 12 * WAY_MARKOV)
+#define META_TABLE_SIZE (4096 * 12 * INIT_WAY_MARKOV)
 #define META_TABLE_ASSOC 12
 #define GLOBAL_DEGREE 1
 
@@ -81,7 +86,7 @@ public:
   std::string benchmark;
 
   uint32_t numEntriesinTable = 0;
-  int waysForCache = 8;
+  int waysForCache = 16 - INIT_WAY_MARKOV;
 
   // stat
   uint64_t meta_table_lookups = 0;
@@ -96,9 +101,12 @@ public:
 
   uint64_t num_useful_prefetch = 0;
   uint64_t num_issued_prefetch = 0;
+  long last_llc_hits = 0;
+  long last_llc_misses = 0;
   uint64_t num_demand = 0;
+  int init_resize_way_for_cache = 0;
   float resize_score, llc_hit_rate, useful_prefetch_rate;
-  bool metadata_resized = false;
+  bool init_resized = false;
 
   std::string log_file_name;
   std::string hint_file;
@@ -137,7 +145,7 @@ public:
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
-    llc_cache->set_available_ways(16 - WAY_MARKOV);
+    llc_cache->set_available_ways(16 - INIT_WAY_MARKOV);
   }
 
   bool isAlreadyInQueue(std::vector<uint64_t>& addresses, uint64_t addr)
@@ -174,46 +182,80 @@ public:
   {
     using hits_value_type = typename decltype(llc_cache->sim_stats.hits)::value_type;
     using misses_value_type = typename decltype(llc_cache->sim_stats.misses)::value_type;
+    float temp_llc_hit_rate = 0;
+    float temp_useful_prefetch_rate = 0;
+    float temp_resize_score = 0;
 
-    long llc_hits = llc_cache->sim_stats.hits.value_or(std::pair{access_type::LOAD, llc_cache->cpu}, hits_value_type{});
-    long llc_misses = llc_cache->sim_stats.misses.value_or(std::pair{access_type::LOAD, llc_cache->cpu}, misses_value_type{});
-    llc_hit_rate = (1.0 * llc_hits / (llc_hits + llc_misses));
+    long llc_hits = (llc_cache->sim_stats.hits.value_or(std::pair{access_type::LOAD, llc_cache->cpu}, hits_value_type{})) - last_llc_hits;
+    long llc_misses = (llc_cache->sim_stats.misses.value_or(std::pair{access_type::LOAD, llc_cache->cpu}, misses_value_type{})) - last_llc_misses;
+
+    if (llc_hits)
+      temp_llc_hit_rate = (1.0 * llc_hits / (llc_hits + llc_misses));
+    else 
+      temp_llc_hit_rate = 0;
+      
     if (num_issued_prefetch)
-      useful_prefetch_rate = (1.0 * num_useful_prefetch / num_issued_prefetch);
+      temp_useful_prefetch_rate = (1.0 * num_useful_prefetch / num_issued_prefetch);
     else
-      useful_prefetch_rate = 0;
-    resize_score = 2 * llc_hit_rate - 1 * useful_prefetch_rate;
-    if (resize_score > 0) {
-      waysForCache = 14;
-      llc_cache->set_available_ways(waysForCache);
-      // resize markov table
-      resizeMetaTable* resized_metadata_table = new resizeMetaTable(4096 * META_TABLE_ASSOC * 2, META_TABLE_ASSOC);
-      //int set_index = 0;
-      for (int i = 0; i < metaTable->num_sets; i++) {
-        
-        if (i % 8 == 0 || i % 8 == 1) {
-          for (int j = 0; j < metaTable->entries[i].size(); j++) { 
-            if (metaTable->entries[i][j].valid) // key % 8*4096 = 8; key % 2*4096 = 8 ; -> 2
+      temp_useful_prefetch_rate = 0;
+
+    if (waysForCache == (16 - MAX_WAY_MARKOV)) {
+      temp_resize_score = 3 * temp_llc_hit_rate - 1 * temp_useful_prefetch_rate;
+      if (temp_resize_score > 0) {
+        waysForCache = 16 - MIN_WAY_MARKOV;
+        llc_cache->set_available_ways(waysForCache);
+        // resize markov table
+        resizeMetaTable* resized_metadata_table = new resizeMetaTable(4096 * META_TABLE_ASSOC * MIN_WAY_MARKOV, META_TABLE_ASSOC);
+        for (int i = 0; i < metaTable->num_sets; i++) {
+          if ((i % MAX_WAY_MARKOV) < MIN_WAY_MARKOV) {
+            for (int j = 0; j < metaTable->entries[i].size(); j++) {
+              if (metaTable->entries[i][j].valid)
+                resized_metadata_table->insert(metaTable->entries[i][j].key, metaTable->entries[i][j].data, metaTable->rrpv[i][j]);
+            }
+          }
+        }
+        delete metaTable;
+        metaTable = resized_metadata_table;
+        metaTable->setpp(this);
+        cout << "Resize Metadata table. Alloc " << MIN_WAY_MARKOV << " ways for metadata!" << endl;
+      } else {
+        cout << "Donot Resize Metadata table. Alloc " << MAX_WAY_MARKOV << " ways for metadata!" << endl;
+      }
+    } else if (waysForCache == (16 - MIN_WAY_MARKOV)) {
+      temp_resize_score = 1.5 * temp_llc_hit_rate - 1 * temp_useful_prefetch_rate;
+      if (temp_resize_score < 0) {
+        waysForCache = 16 - MAX_WAY_MARKOV;
+        llc_cache->set_available_ways(waysForCache);
+        // resize markov table
+        resizeMetaTable* resized_metadata_table = new resizeMetaTable(4096 * META_TABLE_ASSOC * MAX_WAY_MARKOV, META_TABLE_ASSOC);
+        for (int i = 0; i < metaTable->num_sets; i++) {
+          for (int j = 0; j < metaTable->entries[i].size(); j++) {
+            if (metaTable->entries[i][j].valid)
               resized_metadata_table->insert(metaTable->entries[i][j].key, metaTable->entries[i][j].data, metaTable->rrpv[i][j]);
           }
-          // // resized_metadata_table->lru[set_index] = metaTable->lru[i];
-          // for (int j = 0; j < resized_metadata_table->entries[set_index].size(); j++) {
-          //   auto entry_key = resized_metadata_table->entries[set_index][j].key;
-          //   auto tag_in_new_table = entry_key / resized_metadata_table->num_sets;
-          //   auto way_in_new_table = resized_metadata_table->cams[set_index][tag_in_new_table];
-          //   auto tag_in_old_table = entry_key / metaTable->num_sets;
-          //   auto way_in_old_table = metaTable->cams[i][tag_in_old_table];
-          //   resized_metadata_table->lru[set_index][way_in_new_table] = metaTable->lru[i][way_in_old_table];
-          // }
-          // set_index++;
         }
+        delete metaTable;
+        metaTable = resized_metadata_table;
+        metaTable->setpp(this);
+        cout << "Resize Metadata table. Alloc " << MAX_WAY_MARKOV << " ways for metadata!" << endl;
+      } else {
+        cout << "Donot Resize Metadata table. Alloc " << MIN_WAY_MARKOV << " ways for metadata!" << endl;
       }
-      delete metaTable;
-      metaTable = resized_metadata_table;
-      cout << "Resize Metadata table. Alloc 2 ways for metadata!" << endl;
-    }else{
-      cout << "Donot Resize Metadata table. Alloc 8 ways for metadata!" << endl;
     }
+    num_useful_prefetch = 0;
+    num_issued_prefetch = 0;
+    num_demand = 0;
+    last_llc_hits = llc_cache->sim_stats.hits.value_or(std::pair{access_type::LOAD, llc_cache->cpu}, hits_value_type{});
+    last_llc_misses = llc_cache->sim_stats.misses.value_or(std::pair{access_type::LOAD, llc_cache->cpu}, misses_value_type{});
+    
+    if (!init_resized){
+      llc_hit_rate = temp_llc_hit_rate;
+      useful_prefetch_rate = temp_useful_prefetch_rate;
+      resize_score = temp_resize_score;
+      init_resize_way_for_cache = waysForCache;
+      init_resized = true;
+    }
+
   };
 
   using champsim::modules::prefetcher::prefetcher;

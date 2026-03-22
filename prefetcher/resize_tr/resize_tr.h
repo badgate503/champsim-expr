@@ -1,5 +1,5 @@
-#ifndef PCTP
-#define PCTP
+#ifndef RESIZE
+#define RESIZE
 
 #include <cassert>
 #include <cstdint>
@@ -17,46 +17,47 @@
 #include "cache.h"
 #include "champsim.h"
 
-#define PCQ_SIZE 8
-#define ONLY_TRIGGER_ON_MISS false
-#define PC_META_TABLE_MODE 0 // 0: map ; 1: lru ; 2: srrip
-#define PC_META_TABLE_SIZE (4 * 1024 * 1 * 12)
-#define PC_META_TABLE_ASSOC 12
+#include "../triangel/triangel.h"
+
+#define INIT_WINDOW 100000
+#define BASE_TRIGGER_NUM 1
+// #define MISS_CLASS_LOG
 
 #define PC_TABLE_SIZE 512
 #define PC_TABLE_ASSOC 16
-
-#define WAY_MARKOV 4
+#define META_TABLE_SIZE (4096 * 12 * 4)
 #define META_TABLE_ASSOC 12
-#define META_TABLE_SIZE (4096 * 12 * WAY_MARKOV)
-#define GLOBAL_DEGREE 1 
+#define GLOBAL_DEGREE 1
 
-class pctp;
+#define TRNGL_SD_INDEX_BITS 6
+#define TRNGL_SD_SETMASK ((1 << 6) - 1)
+#define TRNGL_SD_CACHE_SIZE 16
+#define TRNGL_SD_MARKOV_SIZE 8
 
-uint64_t hash_xor(uint64_t addr);
+class resize_tr;
 
-struct pctpMetaTableEntry {
+struct resize_trMetaTableEntry {
 
   uint64_t correlated_addr;
   bool used;
 
-  pctpMetaTableEntry() : correlated_addr(0), used(false) {};
-  pctpMetaTableEntry(uint64_t addr) : correlated_addr(addr) {};
+  resize_trMetaTableEntry() : correlated_addr(0), used(false) {};
+  resize_trMetaTableEntry(uint64_t addr) : correlated_addr(addr) {};
 };
 
-class pctpMetaTable : public LRUSetAssociativeCache<pctpMetaTableEntry>
+class resize_trMetaTable : public SRRIPSetAssociativeCache<resize_trMetaTableEntry>
 {
-  typedef LRUSetAssociativeCache<pctpMetaTableEntry> Super;
+  typedef SRRIPSetAssociativeCache<resize_trMetaTableEntry> Super;
 
 public:
   std::unordered_map<uint64_t, std::set<uint64_t>> reverse_metatable;
-  pctp* prefetcher;
+  resize_tr* prefetcher;
 
-  pctpMetaTable(int size, int num_ways) : Super(size, num_ways), prefetcher(nullptr) {}
+  resize_trMetaTable(int size, int num_ways) : Super(size, num_ways), prefetcher(nullptr) {}
 
-  void setpp(pctp* p) { prefetcher = p; }
+  void setpp(resize_tr* p) { prefetcher = p; }
 
-  pctpMetaTableEntry* find(uint64_t key)
+  resize_trMetaTableEntry* find(uint64_t key)
   {
     Entry* entry = Super::find(key);
     if (!entry) {
@@ -69,12 +70,13 @@ public:
       If evict another valid entry: return true!
       else: return false!
   */
-  bool insert(uint64_t key, const pctpMetaTableEntry& data);
+  bool insert(uint64_t key, const resize_trMetaTableEntry& data);
+  bool insert(uint64_t key, const resize_trMetaTableEntry& data, uint64_t rrpv_value);
 
   Entry* erase(uint64_t key) { return Super::erase(key); }
 };
 
-class pctp : public champsim::modules::prefetcher
+class resize_tr : public champsim::modules::prefetcher
 {
 public:
   // BaseTags* cachetags;
@@ -85,7 +87,7 @@ public:
   std::string benchmark;
 
   uint32_t numEntriesinTable = 0;
-  int waysForCache = 16 - WAY_MARKOV;
+  int waysForCache = 8;
 
   // stat
   uint64_t meta_table_lookups = 0;
@@ -94,21 +96,20 @@ public:
   uint64_t meta_table_accurate_prefetches = 0;
   std::set<uint64_t> meta_table_prefetches;
 
-  pctpMetaTable* metaTable = new pctpMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
+  //trngl resize policy
+  SetDueller* SD = new SetDueller();
+  int current_partition = 4;
+  uint64_t global_timestamp = 0;
+
+  resize_trMetaTable* metaTable = new resize_trMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
 
   LRUSetAssociativeCache<std::deque<uint64_t>>* pcTable = new LRUSetAssociativeCache<std::deque<uint64_t>>(PC_TABLE_SIZE, PC_TABLE_ASSOC);
 
-  std::deque<uint64_t> PCQ;
-#if PC_META_TABLE_MODE == 0
-  std::map<uint64_t, uint64_t> pc_meta_table; // <trigger pc, block_addr>
-#elif PC_META_TABLE_MODE == 1
-  LRUSetAssociativeCache<uint64_t>* pc_meta_table = new LRUSetAssociativeCache<uint64_t>(PC_META_TABLE_SIZE, PC_META_TABLE_ASSOC);
-#elif PC_META_TABLE_MODE == 2
-  SRRIPSetAssociativeCache<uint64_t>* pc_meta_table = new SRRIPSetAssociativeCache<uint64_t>(PC_META_TABLE_SIZE, PC_META_TABLE_ASSOC);
-#endif
-  // stat
-  std::set<uint64_t> PCM_issued_prefetches, PCM_filled_prefetches;
-  uint64_t PCM_late_prefetches = 0, PCM_useful_prefetches = 0, PCM_useless_prefetches = 0;
+  uint64_t num_useful_prefetch = 0;
+  uint64_t num_issued_prefetch = 0;
+  uint64_t num_demand = 0;
+  float resize_score, llc_hit_rate, useful_prefetch_rate;
+  bool metadata_resized = false;
 
   std::string log_file_name;
   std::string hint_file;
@@ -147,10 +148,24 @@ public:
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
-    llc_cache->set_available_ways(waysForCache);
+    llc_cache->set_available_ways(16 - current_partition); 
   }
 
-  bool isAlreadyInQueue(std::vector<uint64_t>& addresses, uint64_t addr)
+  void metadata_resize(int partition) {
+    auto new_metaTable = new resize_trMetaTable(4096 * 12 * partition, 12);
+    new_metaTable->setpp(this);
+    for (int i = 0; i < metaTable->num_sets; i++) {
+      for (int j = 0; j < metaTable->entries[i].size(); j++) {
+        if (metaTable->entries[i][j].valid) // key % 8*4096 = 8; key % 2*4096 = 8 ; -> 2
+          new_metaTable->insert(metaTable->entries[i][j].key, metaTable->entries[i][j].data, metaTable->rrpv[i][j]);
+      }
+    }
+    delete metaTable;
+    metaTable = new_metaTable;
+  }
+
+      bool
+      isAlreadyInQueue(std::vector<uint64_t>& addresses, uint64_t addr)
   {
     for (uint64_t& a : addresses) {
       if (a == addr)
@@ -159,9 +174,7 @@ public:
     return false;
   }
 
-  int issue_metatable(pctpMetaTable* metaTable, uint64_t lookup, std::vector<uint64_t>& addresses);
-
-  void invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, uint8_t type, vector<uint64_t>& pref_addr);
+  int issue_metatable(resize_trMetaTable* metaTable, uint64_t pc, uint64_t lookup, std::vector<uint64_t>& addresses);
 
   uint64_t get_last(uint64_t ip)
   {
@@ -182,12 +195,17 @@ public:
     }
   };
 
+  void reset_metadata_size()
+  {
+    //deprecated
+  };
+
   using champsim::modules::prefetcher::prefetcher;
 
   void prefetcher_initialize()
   {
     metaTable->setpp(this);
-#ifdef ELABORATE_LOG
+#ifdef MISS_CLASS_LOG
     benchmark = champsim::global_trace_name;
     log_file_name = "./" + toProfilePath(benchmark) + ".txt";
     cout << log_file_name << endl;
@@ -203,4 +221,4 @@ public:
   void prefetcher_final_stats();
 };
 
-#endif // __MEM_CACHE_PREFETCH_pctp_HH__
+#endif // __MEM_CACHE_PREFETCH_resize_HH__
