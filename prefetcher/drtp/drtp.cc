@@ -226,7 +226,14 @@ bool drtpMetaTable::insert(uint64_t key, const drtpMetaTableEntry& data)
   reverse_metatable[data.correlated_addr].insert(key);
   Entry victim_entry = Super::insert(key, data);
   // Super::set_mru(key);
+#ifdef TOUCH_TRIGGER
+  if (victim_entry.key != key)  
+    set_default(key);
+  else
+    touch(key);
+#else
   set_default(key);
+#endif
   uint64_t index = key % this->num_sets;
   uint64_t tag = key / this->num_sets;
   // int way = this->cams[index][tag];

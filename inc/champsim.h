@@ -36,6 +36,8 @@ namespace champsim
 {
 
   extern std::string global_trace_name;
+  extern int cur_cpu;
+  extern std::string global_trace_array[];
 struct deadlock : public std::exception {
   const uint32_t which;
   explicit deadlock(uint32_t cpu) : which(cpu) {}

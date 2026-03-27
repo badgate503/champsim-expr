@@ -39,6 +39,8 @@ std::chrono::seconds elapsed_time() { return std::chrono::duration_cast<std::chr
 namespace champsim
 {
   std::string global_trace_name;
+  int cur_cpu = 0;
+  std::string global_trace_array[8] = {"", "", "", "", "", "", "", ""};
 long do_cycle(environment& env, std::vector<tracereader>& traces, std::vector<std::size_t> trace_index, champsim::chrono::clock& global_clock)
 {
   auto operables = env.operable_view();
@@ -67,6 +69,10 @@ phase_stats do_phase(const phase_info& phase, environment& env, std::vector<trac
   auto operables = env.operable_view();
   auto [phase_name, is_warmup, length, trace_index, trace_names] = phase;
   global_trace_name = trace_names[0];
+  for(int i = 0; i < trace_names.size(); i++) {
+    global_trace_array[i] = trace_names[i];
+  }
+
   // Initialize phase
   for (champsim::operable& op : operables) {
     op.warmup = is_warmup;

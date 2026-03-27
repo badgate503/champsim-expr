@@ -15,7 +15,7 @@ UNDERLINE = '\033[4m'
 END = '\033[0m'
 TRACE_LIST = {}
 PF_LIST = [
-    # "no",
+    "no",
     # "baseline.1way",
     # "baseline.2way",
     # "baseline.3way",
@@ -23,29 +23,37 @@ PF_LIST = [
     # "baseline.5way",
     # "baseline.6way",
     # "baseline.7way",
-    "baseline.8way",
-    # "triangel",
-    # "prophet",
+    # "baseline.8way",
+    # "acc_stat",
+    "triangel",
+    "prophet",
     # "kairos",
-    # "prism",
-    # "prismlog",
-    # "prismlog1w",
-    # "prismlog10w",
+    # "croage",
+    "prism",
+    "prism33",
+    # "prism_fixlevel",
+    # "prism_rs",
+    # "prism_runtimers",
+    # "prism_dy",
+    "prism_dy2",
+    "prism_l2pf",
+    "prism_l3pf",
+    "prism_filter",
+    # "prism_ndy",
 
-    # "pctp.a1",
-    # "pctp.a2",
-    # "pctp.a4",
-    # "pctp.a8",
-    # "pctp.a12",
-    # "pctp.a16",
-    # "pctp6ksrp",
-    # "pctp12ksrp",
-    # "pctp24ksrp",
-    # "pctp1waysrp",
-    # "pctp2waysrp",
-    # "pctp3waysrp",
-    # "pctp4waysrp",
-    # "pctp1waysrp2",
+    # "pctpinf.a1",
+    # "pctpinf.a2",
+    # "pctpinf.a4",
+    # "pctpinf.a8",
+    # "pctpinf.a12",
+    # "pctpinf.a16",
+    # "pctp6k",
+    # "pctp12k",
+    # "pctp24k",
+    # "pctp48k",
+    # "pctp96k",
+    # "pctp144k",
+    # "pctp192k",
 
     # "conftp-inf",
     # "conftp1way",
@@ -57,7 +65,7 @@ PF_LIST = [
 
     # "tri2way2",
 
-    "resize_tr",
+    # "resize_tr",
     # "resize_pr",
     # "resize_kr",
     # "resize1w",
@@ -67,73 +75,60 @@ PF_LIST = [
 
     # "resize_regular8",
     # "resize_regular2",
-    "resize1to8",
-    "resize8to1",
-    "resize2to8",
-    "resize8to2",
+    # "resize1to8",
+    # "resize8to1",
+    # "resize2to8",
+    # "resize8to2",
     
     # "earlytp",
-
     # "filtetp",
     # "filtetp2",
+
+    # "lfutp",
     # "shtp",
-    # "rndtp",
+    # "shtp-trigger",
     # "srtp",
+    # "srtp-trigger",
+    # "brtp",
+    # "brtp-trigger",
     # "drtp",
+    # "drtp-trigger",
+    # "rndtp",
 
     # "ltpl2dyn",
     # "ltpl3dyn",
     # "ltpl4dyn",
     # "ltpl2dynamic",
-    # "ltpl0d1",
-    # "ltpl0d2",
-    # "ltpl0d4",
-    # "ltpl0d6",
-    # "ltpl0d8",
-    # "ltpl1d1",
-    # "ltpl1d2",
-    # "ltpl1d4",
-    # "ltpl1d6",
-    # "ltpl1d8",
-    # "ltpl2d1",
-    # "ltpl2d2",
-    # "ltpl2d4",
-    # "ltpl2d6",
-    # "ltpl2d8",
-    # "ltpl3d1",
-    # "ltpl3d2",
-    # "ltpl3d4",
-    # "ltpl3d6",
-    # "ltpl3d8",
-    # "ltpl4d1",
-    # "ltpl4d2",
-    # "ltpl4d4",
-    # "ltpl4d6",
-    # "ltpl4d8",
-    # "latetpl0d2",
-    # "latetpl0d3",
-    # "latetpl0d4",
-    # "latetpl0d5",
-    # "latetpl1d1",
-    # "latetpl1d2",
-    # "latetpl1d3",
-    # "latetpl1d4",
-    # "latetpl1d5",
-    # "latetpl2d1",
-    # "latetpl2d2",
-    # "latetpl2d3",
-    # "latetpl2d4",
-    # "latetpl2d5",
-    # "latetpl3d1",
-    # "latetpl3d2",
-    # "latetpl3d3",
-    # "latetpl3d4",
-    # "latetpl3d5",
-    # "latetpl4d1",
-    # "latetpl4d2",
-    # "latetpl4d3",
-    # "latetpl4d4",
-    # "latetpl4d5",
+    # "localdg",
+    # "localdg42",
+    # "globaldg42",
+
+
+    # "ltp4wayl0d1",
+    # "ltp4wayl0d2",
+    # "ltp4wayl0d4",
+    # "ltp4wayl0d6",
+    # "ltp4wayl0d8",
+    # "ltp4wayl1d1",
+    # "ltp4wayl1d2",
+    # "ltp4wayl1d4",
+    # "ltp4wayl1d6",
+    # "ltp4wayl1d8",
+    # "ltp4wayl2d1",
+    # "ltp4wayl2d2",
+    # "ltp4wayl2d4",
+    # "ltp4wayl2d6",
+    # "ltp4wayl2d8",
+    # "ltp4wayl3d1",
+    # "ltp4wayl3d2",
+    # "ltp4wayl3d4",
+    # "ltp4wayl3d6",
+    # "ltp4wayl3d8",
+    # "ltp4wayl4d1",
+    # "ltp4wayl4d2",
+    # "ltp4wayl4d4",
+    # "ltp4wayl4d6",
+    # "ltp4wayl4d8",
 ]
 METRICS = [
     'IPC',
@@ -158,12 +153,13 @@ METRICS = [
     'MPKI',
     'PCM_useful_prefetches',
     'PCM_late_prefetches',
-    'PCM_coverage',
     'PCM_accuracy',
     'PCM_laterate',
+    'MT_lookups',
     'MT_hitrate',
     'MT_accuracy',
     'MT_accuratepf',
+    'MT_acc_find_rate',
     'CT_hitrate',
     'CT_accuracy',
     'CT_useful_prefetches',
@@ -251,10 +247,6 @@ def get_measure(path, baseline_result = None):
                 pairs = re.findall(r'(\w+):\s+(\d+)', line)
                 rfo_l2c = {k: int(v) for k, v in pairs}
 
-            if line.startswith("cpu0->cpu0_L2C PREFETCH"):
-                pairs = re.findall(r'(\w+):\s+(\d+)', line)
-                prefetch_l2c = {k: int(v) for k, v in pairs}
-
             if line.startswith("cpu0->LLC TOTAL"):
                 pairs = re.findall(r'(\w+):\s+(\d+)', line)
                 total_llc = {k: int(v) for k, v in pairs}
@@ -267,9 +259,9 @@ def get_measure(path, baseline_result = None):
                 pairs = re.findall(r'(\w+):\s+(\d+)', line)
                 rfo_llc = {k: int(v) for k, v in pairs}
 
-            if line.startswith("cpu0->LLC PREFETCH"):
+            if line.startswith("cpu0->LLC PREFETCH REQUESTED"):
                 pairs = re.findall(r'(\w+):\s+(\d+)', line)
-                prefetch_llc = {k: int(v) for k, v in pairs}
+                data_llcpf = {k: int(v) for k, v in pairs}
 
         if not find:
             print(f"{RED}Error: No simulation result found in {path}{END}")
@@ -298,6 +290,9 @@ def get_measure(path, baseline_result = None):
         # counters['L2C_UselessPF'] = f"{data_l2pf['USELESS'] / (data_l2pf['ISSUED']) if data_l2pf['ISSUED'] > 0 else 0.0} "
         counters['LLC_DemandHit'] = f"{load_llc['HIT'] / load_llc['ACCESS']}"
 
+        if (int(counters['MT_lookups']) > 0):
+            counters['MT_acc_find_rate'] = f"{float(counters['MT_accuratepf']) / float(counters['MT_lookups'])}"
+
         if baseline_result is not None:
             if baseline_result['L2C_Demand_miss'] > 0:
                 counters['L2C_Coverage'] = f"{(baseline_result['L2C_Demand_miss'] - (load_l2c['MISS'] + rfo_l2c['MISS'])) / baseline_result['L2C_Demand_miss']}"
@@ -308,9 +303,10 @@ def get_measure(path, baseline_result = None):
             counters['L2C_Coverage'] = f"{0.0}"
             
         
-        counters['L2C_PFfill'] = f"{data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']}"
-        if int(counters['L2C_PFfill']) > 0:
-            counters['L2C_Accuracy'] = f"{((data_l2pf['USEFUL'] + data_l2pf['LATE']) / int(counters['L2C_PFfill']))}"
+        # if (data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']) > 10:
+            # counters['L2C_Accuracy'] = f"{((data_l2pf['USEFUL'] + data_l2pf['LATE']) / (data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']))}"
+        if (data_l2pf['ISSUED']) > 0:
+            counters['L2C_Accuracy'] = f"{((data_l2pf['USEFUL'] + data_l2pf['LATE']) / (data_l2pf['ISSUED']))}"
         if data_l2pf['USEFUL'] > 0:
             counters['L2C_Timeliness'] = f"{(data_l2pf['USEFUL'] / (data_l2pf['USEFUL'] + data_l2pf['LATE']))}"
 
@@ -321,7 +317,7 @@ def get_measure(path, baseline_result = None):
                 counters['DRAM_Traffic'] = str(1.0*current_dram_traffic / baseline_dram_traffic)
         else:
             counters['DRAM_Traffic'] = str(rq_rbh + rq_rbm + wq_rbh + wq_rbm)
-        print(counters)
+        #print(counters)
         return counters
 
 
@@ -345,12 +341,13 @@ if __name__ == "__main__":
                 
                 for pf in PF_LIST:
                     if os.path.exists(LOG_PATH +"/"+ pf + "/" + (trace+".log")):
-                        print("Reading from: " + LOG_PATH +"/"+ pf + "/" + (trace+".log"))
+                        #print("Reading from: " + LOG_PATH +"/"+ pf + "/" + (trace+".log"))
                         result = get_measure(LOG_PATH +"/"+ pf + "/" + (trace+".log"), baseline_result[trace])
                         f.write(trace + "," + pf + "," + ",".join([result[m] for m in METRICS]) + "\n")
                         average[pf].append(list(result.values()))
                     else:
-                        print(f"{RED}Warning: Log file for trace {trace} with prefetcher {pf} not found.{END}")
+                        #print(f"{RED}Warning: Log file for trace {trace} with prefetcher {pf} not found.{END}")
+                        pass
             average_line = {pf: {m: "0" for m in METRICS} for pf in PF_LIST}
             for m in METRICS:
                 if m == "IPC" or m == "IPCI":

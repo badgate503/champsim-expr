@@ -1,13 +1,89 @@
 #include "prism.h"
 
-int prism::issue_mainMetatable(uint64_t block_addr, int degree)
+// int prism::issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree)
+// {
+//   int cur = 0;
+//   uint64_t lookup = block_addr;
+//   auto pc_entry = pcTable->find(pc);
+//   pf_filter_entry *last_filter_entry = nullptr, *cur_filter_entry = nullptr;
+
+//   auto filter_entry = pf_filter->find(lookup);
+//   if (filter_entry && filter_entry->next) {
+//     filter_entry = filter_entry->next;
+//     while (filter_entry) {
+//       if (!filter_entry->fill_l2 && cur < 3) {
+//         bool success = prefetch_line({filter_entry->pf_addr << LOG2_BLOCK_SIZE}, true, 0);
+//         if (success) {
+//           pc_entry->data.issuedPrefetchCount++;
+//           if (!llc_cache->warmup) {
+//             resize_issued_prefetch++;
+//           }
+//         }
+//       }
+//       lookup = filter_entry->pf_addr;
+//       last_filter_entry = filter_entry;
+//       filter_entry = filter_entry->next;
+//       cur++;
+//       if (cur > degree) {
+//         return 0;
+//       }
+//     }
+//   }
+
+//   int i;
+//   for (i = cur; i < degree; i++) {
+//     auto entry = mainMetaTable->find(lookup);
+//     main_table_lookups++;
+//     if (entry == nullptr)
+//       break;
+//     main_table_hits++;
+//     bool success;
+//     if (i < 3) {
+//       success = prefetch_line({entry->target_addr << LOG2_BLOCK_SIZE}, true, 0);
+//       if (success) {
+//         pc_entry->data.issuedPrefetchCount++;
+//         if (!llc_cache->warmup) {
+//           resize_issued_prefetch++;
+//         }
+//         cur_filter_entry = pf_filter->insert(entry->target_addr, true);
+//       }else{
+//         return i;
+//       }
+//     } else {
+//       success = llc_cache->prefetch_line({entry->target_addr << LOG2_BLOCK_SIZE}, true, 0);
+//       if (success){
+//         cur_filter_entry = pf_filter->insert(entry->target_addr, false);
+//       }else{
+//         return i;
+//       }
+//     }
+//     if (last_filter_entry){
+//       last_filter_entry->next = cur_filter_entry;
+//     }
+//     last_filter_entry = cur_filter_entry;
+//     lookup = entry->target_addr;
+    
+//     // stat
+//     if (success) {
+//       if (main_table_prefetches.find(entry->target_addr) != main_table_prefetches.end()) {
+//         main_table_issued_prefetches++;
+//         main_table_prefetches.insert(entry->target_addr);
+//       }
+//     }
+//   }
+
+//   return i;
+// }
+
+int prism::issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree)
 {
   int issued = 0;
   uint64_t lookup = block_addr;
+  auto pc_entry = pcTable->find(pc);
   for (int i = 0; i < degree; i++) {
     auto entry = mainMetaTable->find(lookup);
     main_table_lookups++;
-    if (entry == nullptr || entry->target_addr == 0)
+    if (entry == nullptr)
       break;
     main_table_hits++;
 #ifdef PREFETCH_FILTER
@@ -19,17 +95,17 @@ int prism::issue_mainMetatable(uint64_t block_addr, int degree)
 
     const bool success = prefetch_line({entry->target_addr << LOG2_BLOCK_SIZE}, true, 0);
     if (success) {
+      pc_entry->data.issuedPrefetchCount++;
+      if (pc_entry->data.issuedPrefetchCount == 64){
+        pc_entry->data.update_counter(pc);
+      }
       issued++;
       main_table_issued_prefetches++;
       main_table_prefetches.insert(entry->target_addr);
-#ifdef INIT_RESIZE
-      if (!resized && !llc_cache->warmup) {
+      if (!llc_cache->warmup) {
         resize_issued_prefetch++;
       }
-#endif
-#ifdef PREFETCH_FILTER
-      pf_filter->insert(entry->target_addr);
-#endif
+      pf_filter->insert(entry->target_addr, true);
 #ifdef ELABORATE_LOG
       logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr) << std::endl;
 #endif
@@ -83,24 +159,37 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
   if (pc == 0 || block_addr == 0)
     return metadata_in;
 
-  if (!llc_cache->warmup && (type == access_type::LOAD || type == access_type::RFO)) {
-    demand++;
-  }
-#ifdef INIT_RESIZE
-  if (!llc_cache->warmup && useful_prefetch) {
-    resize_useful_prefetch++;
-  }
-#endif
+  // resize
+  if (!llc_cache->warmup) {
+    if (type == access_type::LOAD || type == access_type::RFO)
+      demand++;
+    if (useful_prefetch)
+      resize_useful_prefetch++;
 
-  if (!resized && !llc_cache->warmup && demand >= INIT_RESIZE_WINDOW) {
-#ifdef INIT_RESIZE
-    update_main_metatable_size();
-#endif
+    if (!init_resized) {
+      if (demand >= INIT_RESIZE_WINDOW) {
 #ifdef PC_TRIGGER_PREFETCHING
-    update_pc_metatable_size();
+        update_pc_metatable_size();
 #endif
-    resize_cache();
-    resized = true;
+#ifdef METADATA_RESIZE
+        update_main_metatable_size();
+#endif
+        resize_cache();
+        init_resized = true;
+        demand = 0;
+      }
+    } else {
+      if (demand >= RUNTIME_RESIZE_WINDOW) {
+#ifdef PC_TRIGGER_PREFETCHING
+        update_pc_metatable_size();
+#endif
+#ifdef METADATA_RESIZE
+        update_main_metatable_size();
+#endif
+        resize_cache();
+        demand = 0;
+      }
+    }
   }
 
   // stat
@@ -118,7 +207,6 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
     PCM_filled_prefetches.erase(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
   }
 #endif
-
 #ifdef CONFLICT_PREFETCHING
   if (conflict_table_prefetches.count(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE)) {
     conflict_table_accurate_prefetches++;
@@ -129,7 +217,15 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
   auto pc_entry = pcTable->find(pc);
   bool train_pc_meta_table = false;
   if (pc_entry) {
+    // update pc entry
     pcTable->set_mru(pc);
+    if (useful_prefetch) {
+      pc_entry->data.usefulPrefetchCount++;
+    }
+    if (pc_entry->data.issuedPrefetchCount == 64 || pc_entry->data.usefulPrefetchCount == 64) {
+      pc_entry->data.update_counter(pc);
+    }
+
     uint64_t last_addr = pc_entry->data.addrHistory.front();
     if (last_addr != block_addr) {
       // prefetching
@@ -148,7 +244,7 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
         {
           prefetch_line({conflict_meta_entry->data.target_addr << LOG2_BLOCK_SIZE}, true, 0);
 #ifdef PREFETCH_FILTER
-          pf_filter->insert(conflict_meta_entry->data.target_addr);
+          pf_filter->insert(conflict_meta_entry->data.target_addr, true);
 #endif
           conflict_table_issued_prefetches++;
           conflict_table_prefetches.insert(conflict_meta_entry->data.target_addr);
@@ -156,53 +252,82 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
       }
 #endif
 
-      issue_mainMetatable(block_addr, pc_entry->data.degree);
-#ifdef TOUCH_FOR_TRIGGER
-      if (mainMetaTable->find(block_addr))
-        mainMetaTable->touch(block_addr, pc);
+#ifdef DYNAMIC_DEGREE
+      int cur_degree = pc_entry->data.degree;
+      int8_t cur_bw = get_dram_bw();
+      if (cur_degree <= 0) {
+        if (discard_prefetch == 0) {
+          cur_degree = 1;
+        }
+        ++discard_prefetch;
+        if (discard_prefetch == 8)
+          discard_prefetch = 0;
+      }
+
+      if (cur_bw >= 14) {
+        cur_degree = 0;
+      } else if (cur_bw >= 12) {
+        cur_degree -= 2;
+      } else if (cur_bw >= 8) {
+        cur_degree -= 1;
+      }
+#else
+      int cur_degree = DEFAULT_DEGREE;
 #endif
+
+      if (cur_degree > 0) {
+        issue_mainMetatable(pc, block_addr, cur_degree);
+      }
 
       // training
       // auto last_metadata = mainMetaTable->find(last_addr);
       uint64_t trigger_addr = 0;
       if (pc_entry->data.addrHistory.size() > pc_entry->data.lookahead)
         trigger_addr = pc_entry->data.addrHistory[pc_entry->data.lookahead];
-      else
-        trigger_addr = pc_entry->data.addrHistory.back();
+      // else
+      // trigger_addr = pc_entry->data.addrHistory.back();
 
-      if (trigger_addr != 0) {
+      if (trigger_addr != 0 && trigger_addr != block_addr) {
         auto exist_metadata = mainMetaTable->find(trigger_addr);
-        if (exist_metadata) {
-          if (exist_metadata->target_addr == block_addr) {
-#ifndef TOUCH_FOR_TRIGGER
-            mainMetaTable->touch(trigger_addr, pc);
-#endif
-          } else {
-            // metadata conflict
-#ifdef CONFLICT_PREFETCHING
-            uint64_t addr_before_trigger = 0;
-            if (pc_entry->data.addrHistory.size() > pc_entry->data.lookahead + 1)
-              addr_before_trigger = pc_entry->data.addrHistory[pc_entry->data.lookahead + 1];
+        if (pc_entry->data.degree > 0 || discard_metadata == 0) {
+          if (exist_metadata) {
+            if (exist_metadata->target_addr == block_addr) {
+              mainMetaTable->touch(trigger_addr, pc);
+            } else {
+              // metadata conflict
+#ifndef CONFLICT_PREFETCHING
+              mainMetaTable->insert(trigger_addr, pc, {block_addr});
+#else
+              uint64_t addr_before_trigger = 0;
+              if (pc_entry->data.addrHistory.size() > pc_entry->data.lookahead + 1)
+                addr_before_trigger = pc_entry->data.addrHistory[pc_entry->data.lookahead + 1];
 
-            if (addr_before_trigger != 0 && addr_before_trigger != trigger_addr) {
-              conflictTableKey = addr_before_trigger ^ (trigger_addr << 5) ^ (trigger_addr >> 7);
-              conflictTableKey ^= conflictTableKey >> 16;
+              if (addr_before_trigger != 0 && addr_before_trigger != trigger_addr) {
+                conflictTableKey = addr_before_trigger ^ (trigger_addr << 5) ^ (trigger_addr >> 7);
+                conflictTableKey ^= conflictTableKey >> 16;
 
-              conflict_meta_entry = conflictMetaTable->find(conflictTableKey);
-              if (conflict_meta_entry) {
-                mainMetaTable->insert(trigger_addr, pc, {conflict_meta_entry->data.target_addr});
+                conflict_meta_entry = conflictMetaTable->find(conflictTableKey);
+                if (conflict_meta_entry) {
+                  mainMetaTable->insert(trigger_addr, pc, {conflict_meta_entry->data.target_addr});
+                }
+                auto victim_conflict_meta_entry = conflictMetaTable->insert(conflictTableKey, {block_addr});
+                if (!victim_conflict_meta_entry.valid || victim_conflict_meta_entry.key != conflictTableKey)
+                  conflictMetaTable->set_default(conflictTableKey);
+                else
+                  conflictMetaTable->touch(conflictTableKey);
               }
-              auto victim_conflict_meta_entry = conflictMetaTable->insert(conflictTableKey, {block_addr});
-              if (!victim_conflict_meta_entry.valid || victim_conflict_meta_entry.key != conflictTableKey)
-                conflictMetaTable->set_default(conflictTableKey);
-              else
-                conflictMetaTable->touch(conflictTableKey);
-            }
 #endif
+            }
+          } else {
+            mainMetaTable->insert(trigger_addr, pc, {block_addr});
           }
-        } else {
-          mainMetaTable->insert(trigger_addr, pc, {block_addr});
+        } else if (pc_entry->data.degree == 0) {
+          ++discard_metadata;
+          if (discard_metadata == 8)
+            discard_metadata = 0;
         }
+      } else {
+        train_pc_meta_table = true;
       }
 
       // update PC table entry
@@ -220,24 +345,16 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
   } else {
     train_pc_meta_table = true;
     auto victim_pc_entry = pcTable->insert(pc, {block_addr, cache_hit});
-#ifdef PC_TRIGGER_PREFETCHING
-    if (!resized && !llc_cache->warmup && victim_pc_entry.valid && !victim_pc_entry.data.modified) {
+    if (!llc_cache->warmup && victim_pc_entry.valid && !victim_pc_entry.data.modified) {
       unmodified_PC++;
     }
-    if (!resized && !llc_cache->warmup) {
+    if (!llc_cache->warmup) {
       inserted_PC++;
     }
-#endif
   }
 
 #ifdef PC_TRIGGER_PREFETCHING
   // train PC Meta Table
-  if (!resized && !llc_cache->warmup && !cache_hit && train_pc_meta_table) {
-    lack_trigger_miss++;
-  }
-  if (!resized && !llc_cache->warmup && train_pc_meta_table) {
-    lack_trigger++;
-  }
   if (enable_PC_Trigger_prefetching && train_pc_meta_table) {
     if (!cache_hit && PCQ.size() > 0) {
       uint64_t triggerIP = *PCQ.rbegin();
@@ -264,7 +381,7 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
       {
         prefetch_line({pc_meta_entry->data.target_addr << LOG2_BLOCK_SIZE}, true, 0);
 #ifdef PREFETCH_FILTER
-        pf_filter->insert(pc_meta_entry->data.target_addr);
+        pf_filter->insert(pc_meta_entry->data.target_addr, true);
 #endif
         PCM_issued_prefetches.insert(pc_meta_entry->data.target_addr);
       }
@@ -317,7 +434,13 @@ uint32_t prism::prefetcher_cache_fill(champsim::address addr, long set, long way
   return 0;
 }
 
-void prism::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where) {}
+void prism::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where)
+{
+  auto pc_entry = pcTable->find(ip.to<uint64_t>());
+  if (pc_entry) {
+    pc_entry->data.latePrefetchCount++;
+  }
+}
 
 void prism::prefetcher_final_stats()
 {
@@ -340,11 +463,8 @@ void prism::prefetcher_final_stats()
   uint64_t PCM_total_prefetches = PCM_late_prefetches + PCM_useful_prefetches + PCM_useless_prefetches;
   cout << "PCM_accuracy " << (PCM_total_prefetches ? (double)PCM_accurate_prefetches / PCM_total_prefetches : 0) << endl;
   cout << "PCM_laterate " << (PCM_accurate_prefetches ? (double)PCM_late_prefetches / PCM_accurate_prefetches : 0) << endl;
-
   cout << "Unmod_PC " << unmodified_PC << endl;
   cout << "Insert_PC " << inserted_PC << endl;
-  cout << "Lack_Tri " << lack_trigger << endl;
-  cout << "Lack_TriMiss " << lack_trigger_miss << endl;
 #endif
 
 #ifdef CONFLICT_PREFETCHING
@@ -356,12 +476,11 @@ void prism::prefetcher_final_stats()
   cout << "CT_accuracy " << (conflict_table_issued_prefetches ? (double)conflict_table_accurate_prefetches / conflict_table_issued_prefetches : 0) << endl;
 #endif
 
-#ifdef INIT_RESIZE
-  cout << "Resize_L3Hit_rate " << resize_llc_hit_rate << endl;
-  cout << "Resize_UPF_rate " << resize_useful_prefetch_rate << endl;
-  cout << "Resize_Score " << resize_score << endl;
-  cout << "Resize_WayForCache_" << waysForCache << endl;
-#endif
+  cout << "Init_L3Hit_rate " << init_resize_llc_hit_rate << endl;
+  cout << "Init_UPF_rate " << init_resize_useful_prefetch_rate << endl;
+  cout << "Init_Score " << init_resize_score << endl;
+  cout << "Init_WayForMarkov " << init_ways_for_markov << endl;
+  cout << "Init_WayForPCT " << init_ways_for_pc_metadata_table << endl;
 }
 
 void prism::prefetcher_cycle_operate() {}
@@ -371,12 +490,7 @@ bool prismMetaTable::insert(uint64_t key, uint64_t ip, const MetaTableEntry& dat
   reverse_metatable[data.target_addr].insert(key);
 
   Entry victim_entry = Super::insert(key, data);
-#ifdef TOUCH_FOR_TRIGGER
-  if (!victim_entry.valid || victim_entry.key != key)
-    Super::set_default(key, ip);
-#else
   Super::set_default(key, ip);
-#endif
 
   bool ret = false;
   if (victim_entry.valid) {

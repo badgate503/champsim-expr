@@ -80,7 +80,7 @@ uint32_t latetp::prefetcher_cache_operate(champsim::address addr, champsim::addr
     accurate_prefetch_num++;
   }
   unused_prefetches.erase(block_addr);
-#ifdef DYNAMIC_DEGREE
+#ifdef DYNAMIC_GLOBAL_DEGREE
   if (epoch_demand >= 1024){
     tune_global_degree();
   }
@@ -110,10 +110,12 @@ uint32_t latetp::prefetcher_cache_operate(champsim::address addr, champsim::addr
   if (!cache_hit) {
     pc_entry->data.missCount += 1;
   } else if (useful_prefetch) {
-    pc_entry->data.accuratePrefetchCount += 1;
-    if (pc_entry->data.accuratePrefetchCount >= 64 || pc_entry->data.filledPrefetchCount >= 64) {
-      // pc_entry.shift_counter();
+    pc_entry->data.usefulPrefetchCount += 1;
+#ifdef DYNAMIC_LOCAL_DEGREE
+    if (pc_entry->data.usefulPrefetchCount >= 128 || pc_entry->data.filledPrefetchCount >= 128) {
+      pc_entry->data.update_counter();
     }
+#endif
   }
 
   uint64_t lookup_key = block_addr;
@@ -126,11 +128,23 @@ uint32_t latetp::prefetcher_cache_operate(champsim::address addr, champsim::addr
   }
 
   // 2.issue: metadata table
-#ifdef DYNAMIC_DEGREE
-  int issued_by_metatable = issue_metatable(metaTable, lookup_key, global_degree, pref_addr);
+  int cur_degree = 1;
+#ifdef DYNAMIC_GLOBAL_DEGREE
+  cur_degree = global_degree;
 #else 
-  int issued_by_metatable = issue_metatable(metaTable, lookup_key, pc_entry->data.degree, pref_addr);
+  cur_degree = pc_entry->data.degree;
 #endif
+#ifdef BW_DEGREE
+  int cur_bw = get_dram_bw();
+  if (cur_bw >= 12){
+    cur_degree -= 2;
+  }else if (cur_bw >= 8){
+    cur_degree -= 1;
+  }
+#endif
+  if (cur_degree > 0){
+    issue_metatable(metaTable, lookup_key, cur_degree, pref_addr);
+  }
 
   // 3.update
   // 3.1 update the metaTable

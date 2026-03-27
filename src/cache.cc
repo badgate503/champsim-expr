@@ -276,6 +276,11 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   const auto hit = (way != set_end);
   const auto useful_prefetch = (hit && way->prefetch && !handle_pkt.prefetch_from_this);
 
+  // lyq: should "prefetch hit" be included in accurate prefetches?
+  // if (hit && handle_pkt.prefetch_from_this){
+  //   way->prefetch = true;
+  // }
+
   if constexpr (champsim::debug_print) {
     fmt::print("[{}] {} instr_id: {} address: {} v_address: {} data: {} set: {} way: {} ({}) type: {} cycle: {}\n", NAME, __func__, handle_pkt.instr_id,
                handle_pkt.address, handle_pkt.v_address, handle_pkt.data, get_set_index(handle_pkt.address), std::distance(set_begin, way),

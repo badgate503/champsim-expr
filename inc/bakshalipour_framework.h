@@ -305,6 +305,57 @@ protected:
 };
 
 template <class T>
+class LFUSetAssociativeCache : public SetAssociativeCache<T>
+{
+  typedef SetAssociativeCache<T> Super;
+
+public:
+  LFUSetAssociativeCache(int size, int num_ways, int debug_level = 0)
+      : Super(size, num_ways, debug_level), freq(this->num_sets, std::vector<uint64_t>(num_ways, 0)), global_ts(0)
+  {
+  }
+
+  void touch(uint64_t key)
+  {
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+    freq[index][way]++;
+  }
+
+  void set_default(uint64_t key)
+  {
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+    freq[index][way] = 0;
+  }
+
+  std::vector<std::vector<uint64_t>> freq;
+  uint64_t global_ts;
+
+protected:
+  /* @override */
+  virtual int select_victim(uint64_t index)
+  {
+    int victim_way = 0;
+    uint64_t min_freq = -1;
+    for (int way = 0; way < this->num_ways; ++way) {
+      if (!this->entries[index][way].valid) {
+        victim_way = way;
+        return victim_way;
+      }
+      int curr_freq = freq[index][way];
+      if (curr_freq < min_freq) {
+        min_freq = curr_freq;
+        victim_way = way;
+      }
+    }
+    return victim_way;
+  }
+};
+
+template <class T>
 class RandomSetAssociativeCache : public SetAssociativeCache<T>
 {
   typedef SetAssociativeCache<T> Super;
@@ -436,7 +487,7 @@ public:
     int way = this->cams[index][tag];
     this->rrpv[index][way] = rrpv_value;
   }
-  
+
   // 0 16 32 48 -> 0 1 2 3
   void update_repl(uint64_t key, uint64_t ip)
   {
@@ -544,6 +595,75 @@ public:
 #endif
   }
 
+  vector<vector<uint64_t>> rrpv;
+};
+
+template <class T>
+class BRRIPSetAssociativeCache : public SetAssociativeCache<T>
+{
+  typedef SetAssociativeCache<T> Super;
+
+public:
+  BRRIPSetAssociativeCache(int size, int num_ways, int debug_level = 0) : Super(size, num_ways, debug_level), rrpv(this->num_sets, vector<uint64_t>(num_ways)), bip_counter(0)
+  {
+  }
+
+  /* @override */
+  int select_victim(uint64_t index) override
+  {
+    vector<uint64_t>& rrpv_set = this->rrpv[index];
+    while (true) {
+      for (size_t i = 0; i < Super::num_ways; i++) {
+        if (rrpv_set[i] == MAX_RRPV) {
+          return i;
+        }
+      }
+      for (size_t i = 0; i < Super::num_ways; i++) {
+        if (rrpv_set[i] < MAX_RRPV) {
+          rrpv_set[i]++;
+        }
+      }
+    }
+  }
+
+  void touch(uint64_t key) { this->decrement(key); }
+
+  void set_default(uint64_t key)
+  { // for insertion
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+    bip_counter++;
+    if (bip_counter >= 32){
+      this->rrpv[index][way] = MAX_RRPV - 1;
+      bip_counter = 0;
+    }else{
+      this->rrpv[index][way] = MAX_RRPV;
+    }
+  }
+
+  void set_rrpv(uint64_t key, uint64_t rrpv_value)
+  { // for insertion
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+    this->rrpv[index][way] = rrpv_value;
+  }
+
+  void decrement(uint64_t key)
+  { // for touch
+    uint64_t index = key % this->num_sets;
+    uint64_t tag = key / this->num_sets;
+    int way = this->cams[index][tag];
+#ifdef TOUCH_DECREMENT
+    if (this->rrpv[index][way] > 0)
+      this->rrpv[index][way]--;
+#else
+    this->rrpv[index][way] = 0;
+#endif
+  }
+
+  uint64_t bip_counter;
   vector<vector<uint64_t>> rrpv;
 };
 

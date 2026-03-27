@@ -51,10 +51,21 @@ const unsigned PAGE_SIZE = configured_environment::page_size;
 const unsigned LOG2_BLOCK_SIZE = champsim::lg2(BLOCK_SIZE);
 const unsigned LOG2_PAGE_SIZE = champsim::lg2(PAGE_SIZE);
 
+static configured_environment* g_env;
+uint8_t get_dram_bw()
+{
+  MEMORY_CONTROLLER& mc = g_env->dram_view();
+  return mc.get_bw();
+}
+
 #ifndef CHAMPSIM_TEST_BUILD
 int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 {
   champsim::global_trace_name = argv[5];
+  for(int i = 6; i <= argc; i++) {
+    champsim::global_trace_array[i-6] = argv[i-1];
+    std::cout << "argc" << i << "argv=" << argv[i-1] << std::endl;
+  }
   configured_environment gen_environment{};
 
   CLI::App app{"A microarchitecture simulator for research and education"};
@@ -64,6 +75,8 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   long long simulation_instructions = std::numeric_limits<long long>::max();
   std::string json_file_name;
   std::vector<std::string> trace_names;
+
+  g_env = &gen_environment;
 
   auto set_heartbeat_callback = [&](auto) {
     for (O3_CPU& cpu : gen_environment.cpu_view()) {

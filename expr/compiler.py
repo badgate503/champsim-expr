@@ -25,7 +25,7 @@ WARM_UP = 50_000_000
 INTERVAL = 200_000_000
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--config", "-c", help="指定 champsim config 的后缀", default="champsim_config")
+parser.add_argument("--ncore", "-n", help="numcore", default="1")
 parser.add_argument("--mode", "-m", choices=["ipc", "missclass"], required=True, help="选择是否输出 miss cause classification 日志")
 parser.add_argument("--debug", "-d", choices=["default", "asan"], help="选择编译模式，Default 为开启 -g -O0; Asan 为开启 AddressSanitizer")
 parser.add_argument("--prefetcher", "-p" , required=True, help="选用的预取器名称")
@@ -54,7 +54,7 @@ if args.flag:
     for f in args.flag:
         extra_cflags.append(f"-D{f}")
 
-with open(f"../{args.config}.json", "r", encoding="utf-8") as f:
+with open(f"../champsim_config.json", "r", encoding="utf-8") as f:
     data = json.load(f)
     data["L1D"]["prefetcher"] = "ip_stride"
     data["L2C"]["prefetcher"] = args.prefetcher
@@ -67,7 +67,20 @@ with open(f"../{args.config}.json", "r", encoding="utf-8") as f:
         data["executable_name"] = f"{args.prefetcher}"
     if args.exename is not None:
         data["executable_name"] = args.exename
-with open(f"../{args.config}.json", "w", encoding="utf-8") as f:
+    data["num_cores"] = int(args.ncore)
+    if int(args.ncore) == 1:
+        data["physical_memory"]["channels"] = 1
+        data["physical_memory"]["ranks"] = 1
+    elif int(args.ncore) == 2:
+        data["physical_memory"]["channels"] = 2
+        data["physical_memory"]["ranks"] = 1
+    elif int(args.ncore) == 4:
+        data["physical_memory"]["channels"] = 2
+        data["physical_memory"]["ranks"] = 2
+    elif int(args.ncore) == 8:
+        data["physical_memory"]["channels"] = 4
+        data["physical_memory"]["ranks"] = 2
+with open(f"../champsim_config.json", "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=4)
 
 print("=============== Compiling ================")
@@ -77,7 +90,7 @@ print(f"LDFLAGS: {' '.join(extra_ldflags)}")
 print("Compiling...")
 
 os.system("cd .. && make clean")
-ret = os.system(f"cd .. && ./config.sh {args.config}.json")
+ret = os.system(f"cd .. && ./config.sh champsim_config.json")
 
 import subprocess
 import sys
@@ -94,7 +107,7 @@ try:
         text=True,
         check=True
     )
-    os.system(f"cp ../{args.config}.json ../bin/champsim_config_{data['executable_name']}.json")
+    os.system(f"cp ../champsim_config.json ../bin/champsim_config_{data['executable_name']}.json")
     print(f"{GREEN}编译完成{END}")
 
 except subprocess.CalledProcessError as e:

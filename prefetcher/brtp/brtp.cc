@@ -1,13 +1,13 @@
-#include "srtp.h"
+#include "brtp.h"
 
 #include <cassert>
 #include <utility>
 
-int srtp::issue_metatable(srtpMetaTable* metaTable, uint64_t lookup, std::vector<uint64_t>& addresses)
+int brtp::issue_metatable(brtpMetaTable* metaTable, uint64_t lookup, std::vector<uint64_t>& addresses)
 {
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
-    srtpMetaTableEntry* candidate = metaTable->find(lookup);
+    brtpMetaTableEntry* candidate = metaTable->find(lookup);
     meta_table_lookups++;
     if (candidate == nullptr)
       break;
@@ -29,7 +29,7 @@ int srtp::issue_metatable(srtpMetaTable* metaTable, uint64_t lookup, std::vector
   return issued;
 }
 
-uint32_t srtp::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
+uint32_t brtp::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
                                             uint32_t metadata_in, std::string latepf)
 {
 #ifdef ELABORATE_LOG
@@ -109,7 +109,7 @@ uint32_t srtp::prefetcher_cache_operate(champsim::address addr, champsim::addres
   lookup_key ^= lookup_key >> 16;
 #endif
 
-  srtpMetaTableEntry* metadata = metaTable->find(lookup_key);
+  brtpMetaTableEntry* metadata = metaTable->find(lookup_key);
   if (metadata) {
     // metaTable->set_mru(lookup_key);
     if (!metadata->used) {
@@ -136,7 +136,7 @@ uint32_t srtp::prefetcher_cache_operate(champsim::address addr, champsim::addres
     insert_key ^= insert_key >> 16;
 #endif
 
-    srtpMetaTableEntry* last_meta = metaTable->find(insert_key);
+    brtpMetaTableEntry* last_meta = metaTable->find(insert_key);
 
     if (last_meta) {
       bool matched = false;
@@ -145,7 +145,7 @@ uint32_t srtp::prefetcher_cache_operate(champsim::address addr, champsim::addres
         metaTable->touch(insert_key);
       } else {
         uint64_t victim_addr = last_meta->correlated_addr;
-        srtpMetaTableEntry temp_entry(block_addr);
+        brtpMetaTableEntry temp_entry(block_addr);
 #ifdef NOMD_WHEN_HIT
         if (!cache_hit)
           metaTable->insert(insert_key, temp_entry, 1);
@@ -154,7 +154,7 @@ uint32_t srtp::prefetcher_cache_operate(champsim::address addr, champsim::addres
 #endif
       }
     } else {
-      srtpMetaTableEntry temp_entry(block_addr);
+      brtpMetaTableEntry temp_entry(block_addr);
 #ifdef NOMD_WHEN_HIT
       if (!cache_hit)
         if (!metaTable->insert(insert_key, temp_entry, 1))
@@ -192,13 +192,13 @@ uint32_t srtp::prefetcher_cache_operate(champsim::address addr, champsim::addres
   return metadata_in;
 }
 
-uint32_t srtp::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
+uint32_t brtp::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
 {
   meta_table_prefetches.erase(evicted_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
   return metadata_in;
 }
 
-void srtp::prefetcher_final_stats()
+void brtp::prefetcher_final_stats()
 {
 #ifdef ELABORATE_LOG
   logfile.close();
@@ -211,7 +211,7 @@ void srtp::prefetcher_final_stats()
   cout << "MT_accuracy " << (meta_table_issued_prefetches ? (double)meta_table_accurate_prefetches / meta_table_issued_prefetches : 0) << endl;
 }
 
-void srtp::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where)
+void brtp::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where)
 {
 #ifdef ELABORATE_LOG
   logfile << std::dec << llc_cache->current_cycle() << " MSHRPFHIT " << std::hex << (addr.to<uint64_t>() >> LOG2_BLOCK_SIZE) << " " << ip << std::dec
@@ -219,9 +219,9 @@ void srtp::prefetcher_late_prefetch(champsim::address addr, champsim::address ip
 #endif
 }
 
-void srtp::prefetcher_cycle_operate() {}
+void brtp::prefetcher_cycle_operate() {}
 
-bool srtpMetaTable::insert(uint64_t key, const srtpMetaTableEntry& data)
+bool brtpMetaTable::insert(uint64_t key, const brtpMetaTableEntry& data)
 {
   reverse_metatable[data.correlated_addr].insert(key);
   Entry victim_entry = Super::insert(key, data);

@@ -32,6 +32,7 @@ WARM_UP = 0
 INTERVAL = 250000000
 parser = argparse.ArgumentParser()
 parser.add_argument("--traces", "-t", nargs="+")
+parser.add_argument("--list", "-l", nargs="+", help="list of traces to analyze, format: trace1,trace2,...")
 parser.add_argument("--print", "-a", action="store_true")
 parser.add_argument("--prefetcher", "-p")
 parser.add_argument("--json", "-j", action="store_true")
@@ -40,24 +41,18 @@ args = parser.parse_args()
 from enum import Enum
 
 class miss_cause(Enum):
-    TARGET_FIRST_APPEAR = 1
-    PF_TOO_LATE = 2
-    PF_TOO_EARLY = 3
-    EVICTED_MD_CAPACITY = 4
-    EVICTED_MD_CONFLICT = 5
-    NO_MD_LAST_ADDR_0 = 6
-    
-    NO_TRIGGER = 7
-    #EVICTED_NO_TRIGGER = 8
-    OTHER = 9
-
-    NO_MD_LAST_ADDR_REPEAT = 11
-    PF_DROPPED = 12
+    COMPULSORY_MISS       = 0
+    UNSEEN_CORRELATION    = 1
+    LATE_PREFETCH         = 2
+    METADATA_LOSS         = 3
+    NO_MD_ZERO            = 4
+    NO_MD_REPEAT          = 5
+    NO_TRIGGER             = 6
 
 
 import glob
 
-data_dir = os.path.join(RESULT_PATH, "data", args.prefetcher)
+data_dir = os.path.join(RESULT_PATH, "data", args.prefetcher+"_detail")
 os.makedirs(data_dir, exist_ok=True)
 already_analyzed = []
 for result in glob.glob(os.path.join(data_dir, "*_breif.txt")):
@@ -65,7 +60,17 @@ for result in glob.glob(os.path.join(data_dir, "*_breif.txt")):
     already_analyzed.append(t.replace("_breif", ""))
 print(f"Already analyzed {len(already_analyzed)} traces: {already_analyzed}")
 
-
+trace_all=[]
+with open("./utils/tracelist", "r") as f:
+    lines = f.readlines()
+    for line in lines:
+        traces = line.split(":", 1)[1].strip().split()
+        if args.list:
+            if args.list[0] == line.split(":", 1)[0].strip():
+                trace_all.extend(traces)
+        else:
+            trace_all.extend(traces)
+print(trace_all)
 
 #all_counters = {}
 print(LOG_PATH)
@@ -74,17 +79,19 @@ working_queue = []
 for log_file in glob.glob(os.path.join(LOG_PATH, args.prefetcher, '*.txt')):
     
     t = os.path.splitext(os.path.basename(log_file))[0]
+    print(t)
     if not args.traces:
         args.traces = []
-    
+     
     if t in already_analyzed and t not in args.traces:
         continue
     if len(args.traces) > 0 and t not in args.traces:
         continue
     with open(os.path.join(LOG_PATH, args.prefetcher, f"{t}.log"), "r") as f:
-
         if not "ChampSim completed all CPUs" in f.read():
             continue
+    if args.list is not None and len(args.list) != 0 and t not in trace_all:
+        continue
     working_queue.append((t,log_file))
 
 print(f"Analyzing: {' '.join([t for t, _ in working_queue])}, total {len(working_queue)} traces.")
@@ -111,18 +118,19 @@ def analyze_one(t, log_file):
     demand_timestamp = 0
     last_evict_timestamp = dict() # addr -> last evict timestamp
     distances = []
+    last0_most = dict()
     #print(f"{CYAN}{t}{END}: Reading logs from {YELLOW}{log_file}{END}")
     with open(log_file) as f:
         if args.print:
-            full_log = open(f"{RESULT_PATH}/data/{args.prefetcher}/{t}_full.txt", "w")
+            full_log = open(f"{RESULT_PATH}/data/{args.prefetcher}_detail/{t}_full.txt", "w")
         for line in f:
             lst = line.strip().split(" ")
             if lst[1] == "HIT":
                 demand_timestamp += 1
                 addr = int(lst[2], 16)
                 ip = int(lst[3], 16)
-                #last_addr = int(lst[4], 16) # from pcTable
-                last_addr = real_last.get(ip) if real_last.get(ip) is not None else 0 # real last addr
+                last_addr = int(lst[4], 16) # from pcTable
+                #last_addr = real_last.get(ip) if real_last.get(ip) is not None else 0 # real last addr
                 triggers = [int(x, 16) for x in lst[5:]]
 
                 #logs.append(hit_log(int(lst[0]), int(lst[2], 16), int(lst[3], 16), int(lst[4],16), [int(x, 16) for x in lst[5:]]))
@@ -143,52 +151,36 @@ def analyze_one(t, log_file):
                 late = lst[2]
                 addr = int(lst[3], 16)
                 ip = int(lst[4], 16)
-                last_addr = int(lst[5], 16) # from pcTable
-                #last_addr = real_last.get(ip) if real_last.get(ip) is not None else 0 # real last addr
+                #last_addr = int(lst[5], 16) # from pcTable
+                last_addr = real_last.get(ip) if real_last.get(ip) is not None else 0 # real last addr
                 miss_type = lst[5]
                 triggers = [int(x, 16) for x in lst[6:]]
                 
-                if miss_type == "PREFETCH":
-                    cause = miss_cause.OTHER
+                
+                if addr not in misses:
+                    misses.add(addr)
+                    cause = miss_cause.COMPULSORY_MISS
+                elif late != "NO":
+                        cause = miss_cause.LATE_PREFETCH
                 else:
-                    if addr not in misses:
-                        misses.add(addr)
-                        cause = miss_cause.TARGET_FIRST_APPEAR
-                    elif late != "NO":
-                        cause = miss_cause.PF_TOO_LATE
-                    else:
-                        entries = md_targets.get(addr)
-                        if entries:
-                            if last_addr in entries.keys():   # YES
-                                if entries[last_addr] == "exist":
-                                    if issue_status.get(addr) is not None:
-                                        if issue_status.get(addr)[0] == "success" or issue_status.get(addr)[0] == "merge":
-                                            if last_evict_timestamp.get(addr) is not None:
-                                                if issue_status.get(addr)[2] < last_evict_timestamp.get(addr):
-                                                    cause = miss_cause.PF_TOO_EARLY
-                                                    distance = demand_timestamp - issue_status.get(addr)[1]
-                                                    distances.append(distance)
-                                                else:
-                                                    cause = miss_cause.PF_TOO_LATE
-                                            else:
-                                                cause = miss_cause.PF_TOO_LATE
-                                        elif issue_status.get(addr)[0] == "drop":
-                                            cause = miss_cause.PF_DROPPED
-                                    else:
-                                        pass
-                                        #print(f"Warning: no issue record for address {addr:#x} at demand timestamp {demand_timestamp}, but it is in md_targets with last_addr {last_addr:#x}. This may cause some inaccuracies in the analysis of too early prefetches.")
-                      
-                                elif entries[last_addr] == "CAPACITY":
-                                    cause = miss_cause.EVICTED_MD_CAPACITY
-                                elif entries[last_addr] == "CONFLICT":
-                                    cause = miss_cause.EVICTED_MD_CONFLICT
+                    entries = md_targets.get(addr)
+                    if entries:
+                        if last_addr in entries.keys():
+                            if entries[last_addr] == "exist":
+                                cause = miss_cause.LATE_PREFETCH
                             else:
-                                cause = miss_cause.NO_TRIGGER
+                                cause = miss_cause.METADATA_LOSS
                         else:
-                            if addr in last_addr_is_0:
-                                cause = miss_cause.NO_MD_LAST_ADDR_0
-                            elif addr in last_addr_is_addr:
-                                cause = miss_cause.NO_MD_LAST_ADDR_REPEAT
+                            cause = miss_cause.NO_TRIGGER
+                    else:
+                        if addr in last_addr_is_0:
+                            cause = miss_cause.NO_MD_ZERO
+                            if ip in last0_most:
+                                last0_most[ip] += 1
+                            else:
+                                last0_most[ip] = 1
+                        elif addr in last_addr_is_addr:
+                            cause = miss_cause.NO_MD_REPEAT
                 if warmed:
                     counters[cause.name] += 1
 
@@ -241,14 +233,12 @@ def analyze_one(t, log_file):
                 last_evict_timestamp[evicted_addr] = lst[0]
                 if args.print:
                     full_log.write(f"[{lst[0]:^12}] CACHEFILL (access = {int(lst[2],16):#x}, evicted = {int(lst[3],16):#x}, prefetch = {lst[4]})\n")
-    with open(f"{RESULT_PATH}/data/{args.prefetcher}/{t}_breif.txt", "w") as f:
+    with open(f"{RESULT_PATH}/data/{args.prefetcher}_detail/{t}_breif.txt", "w") as f:
         for k,v in counters.items():
             f.write(f"{k} {v}\n")
-        f.write(f"AVG_DISTANCE {sum(distances)/len(distances) if len(distances)>0 else 'N/A'}\n")
-        f.write(f"MIN_DISTANCE {min(distances) if len(distances)>0 else 'N/A'}\n")
-        f.write(f"MAX_DISTANCE {max(distances) if len(distances)>0 else 'N/A'}\n")
-    #print(f"Analyzed {t}, total misses: {miss}, cause distribution: {counters}, average distance of too early prefetches: {sum(distances)/len(distances) if len(distances)>0 else 'N/A'}")
-    #print(f"\n{CYAN}{t}{END}: Done.")
+    top10 = sorted(last0_most.items(), key=lambda x: x[1], reverse=True)[:10]
+    for k, v in top10:
+        print(f"{k:#x}", v)
 
 max_workers = min(500,len(working_queue))
 if max_workers != 0:
@@ -259,17 +249,11 @@ if max_workers != 0:
     print("Done.")
 
 
-trace_all=[]
-with open("./utils/tracelist", "r") as f:
-    lines = f.readlines()
-    for line in lines:
-        traces = line.split(":", 1)[1].strip().split()
-        trace_all.extend(traces)
-print(trace_all)
+
 
 result = {a:{} for a in trace_all}
 n = 0
-for path in glob.glob(f"./result/data/{args.prefetcher}/*.txt"):
+for path in glob.glob(f"./result/data/{args.prefetcher}_detail/*.txt"):
 
     name = os.path.splitext(os.path.basename(path))[0].replace("_breif", "")  # xxx.txt -> xxx
     if name == "ipc":
@@ -288,7 +272,7 @@ for path in glob.glob(f"./result/data/{args.prefetcher}/*.txt"):
     n+=1
     result[name] = data
 
-with open(f"./result/data/{args.prefetcher}/result.json", "w") as f:
+with open(f"./result/data/{args.prefetcher}_detail/result.json", "w") as f:
     json.dump(result, f, indent=2)
 
 print("Generated result.json, total analyzed traces:", n)

@@ -54,15 +54,22 @@ for root, dirs, files in os.walk(TRACE_PATH):
             trace_name = f.replace('.champsimtrace.xz',"").replace('.champsimtrace.gz',"").replace('.champsim.gz',"")
             trace_path_map[trace_name] = os.path.join(root, f)
 
-def launch_task(p, w, log):
+def launch_task(p, w, log, alias = ""):
     mode_is_mc = p.endswith(".mc")
-    
-    work = [f"/mnt/data/lyq/Kairos/bin/{p}", "--warmup-instructions", f"{WARM_UP}", "--simulation-instructions", f"{INTERVAL}", trace_path_map[w]]
-    name = f"{w}.log"
+    trace_all = [trace_path_map[v] for v in w]
+    work = [f"/mnt/data/lyq/Kairos/bin/{p}", "--warmup-instructions", f"{WARM_UP}", "--simulation-instructions", f"{INTERVAL}"] + trace_all
+    if alias == "":
+        name = f"{w[0]}.log"
+    else:
+        name = f"{alias}.log"
     if mode_is_mc:
         out_path = f"{log}/{p.replace('.mc', '')}"
     else:
-        out_path = f"{log}/{p}"
+        if len(w) == 1:
+            out_path = f"{log}/{p}"
+        else:
+            out_path = f"{log}/core{len(w)}/{p}"
+    #print(out_path)
     os.makedirs(f"{out_path}/", exist_ok=True)
     with open(f"{out_path}/{name}", "w") as f:
         f.write(" ".join(work))
@@ -88,7 +95,10 @@ def launch_task(p, w, log):
             stderr=f,
             cwd=out_path
         )
-    return f"{YELLOW}{p}{END}@{RED}{w}{END}"
+    if len(w) == 1:
+        return f"{YELLOW}{p}{END}@{RED}{w[0]}{END}"
+    else:
+        return f"{YELLOW}{p}{END}@{RED}{len(w)}core-{alias}{END}"
 import time
 def dummy_launch_task(p,w,l):
     time.sleep(30)
@@ -96,7 +106,7 @@ def dummy_launch_task(p,w,l):
 from queue import Empty
 
 if __name__ == "__main__":
-    manager = QueueManager(address=('', 50001), authkey=b'abc')
+    manager = QueueManager(address=('', 50003), authkey=b'abc')
     manager.start()
     print("Runner Manager started on port 50001")
     
@@ -121,13 +131,24 @@ if __name__ == "__main__":
                 while True:
                     # 使用从 manager 获取的 shared_queue
                     task = shared_queue.get_nowait()
-                    p, w, log = task["prefetcher"], task["trace"], task["path"]
-                    
-                    future = executor.submit(launch_task, p, w, log)
+                    p, w, log, ncore = task["prefetcher"], task["trace"], task["path"], task["numcore"]
+                    if ncore == 1:
+                        future = executor.submit(launch_task, p, [w], log)
+                        print(f"新增: {YELLOW}{p}{END}@{RED}{w}{END}, 队列中任务数: {total_n}，已加载: {len(running)}")
+                    else:
+                        with open(f"./multicore/sample_{ncore}core.csv", "r") as f:
+                            lines = f.readlines()
+                            candidates = []
+                            for line in lines:
+                                parts = line.strip().split(",")
+                                if parts[0].startswith(f"{w}"):
+                                    candidates= parts[1:]         
+                        future = executor.submit(launch_task, p, candidates, log, alias=f"{w}")
+                        print(f"新增: {YELLOW}{p}{END}@{RED}{ncore}core-{w}{END}, 队列中任务数: {total_n}，已加载: {len(running)}")
                     running.append(future)
                     
                     total_n += 1
-                    print(f"新增: {YELLOW}{p}{END}@{RED}{w}{END}, 队列中任务数: {total_n}，已加载: {len(running)}")
+                    
                     outed = False
             except Empty:
                 pass

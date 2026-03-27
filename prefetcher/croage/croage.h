@@ -868,7 +868,7 @@ class croage : public champsim::modules::prefetcher
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
-
+    llc_cache->set_available_ways(16 - HT_WAY/12);
     // // set original partition ways
     // if (llc_cache != nullptr) {
     //     uint32_t occupied_ways = current_metadata_size / 12;

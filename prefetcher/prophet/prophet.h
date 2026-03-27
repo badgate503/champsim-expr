@@ -279,9 +279,12 @@ public:
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
-    benchmark = champsim::global_trace_name;
+    
+    benchmark = champsim::global_trace_array[champsim::cur_cpu];
+    std::cout<<"cpu = " << champsim::cur_cpu << ", tracename = " << toProfilePath(benchmark) << std::endl;
+    champsim::cur_cpu++;
 #ifdef ELABORATE_LOG
-    log_file_name = "./" + toProfilePath(benchmark) + ".txt";
+        log_file_name = "./" + toProfilePath(benchmark) + ".txt";
     cout << log_file_name << endl;
     logfile.open(log_file_name);
 #endif

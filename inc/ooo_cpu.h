@@ -85,6 +85,8 @@ class O3_CPU : public champsim::operable
 public:
   uint32_t cpu = 0;
 
+  std::string local_trace_name;
+
   // cycle
   champsim::chrono::clock::time_point begin_phase_time{};
   long long begin_phase_instr = 0;

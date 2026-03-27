@@ -202,8 +202,16 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
 
   /* Step7. Issue prefetches */
   if (target != 0 && should_pf && current_partition > 0) {
+    bool find = false;
+    MT_lookup_reqs++;
+    
     /* 使用 Addr 索引 Markov 分区得到预取目标地址 TargetAddr0 */
     auto MD_entry = GetMetadata(target, true);
+    MT_lookup++;
+    if (MD_entry) {
+      find = true;
+      MT_hits++;
+    }
     if (MD_entry) {
       MD_entry->used = true;
     }
@@ -216,10 +224,16 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
       degree++;
       if (degree < max_degree) {
         MD_entry = GetMetadata(PF_addr, true);
+        MT_lookup++;
+        if(MD_entry) {
+          find = true;
+          MT_hits++;
+        }
       } else {
         MD_entry = nullptr;
       }
     }
+    if(find) MT_lookup_returns++;
   }
   removeDuplicates(prefetch_addresses);
   for (size_t i = 0; i < prefetch_addresses.size(); i++) {
@@ -253,6 +267,11 @@ uint32_t triangel::prefetcher_cache_fill(champsim::address addr, long set, long 
   return metadata_in;
 }
 
-void triangel::prefetcher_final_stats() {}
+void triangel::prefetcher_final_stats() {
+  cout << "MT_lookups " << MT_lookup << endl;
+  cout << "MT_hits " << MT_hits << endl;
+  cout << "MT_lookup_reqs " << MT_lookup_reqs << endl;
+  cout << "MT_lookup_returns " << MT_lookup_returns << endl;
+}
 
 void triangel::prefetcher_cycle_operate() {}

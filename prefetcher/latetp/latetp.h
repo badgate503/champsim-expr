@@ -17,11 +17,13 @@
 #include "cache.h"
 #include "champsim.h"
 
-// #define DYNAMIC_DEGREE
+// #define DYNAMIC_GLOBAL_DEGREE
+#define DYNAMIC_LOCAL_DEGREE
+#define BW_DEGREE
 #define DEFAULT_LOOKAHEAD 4
 #define DEFAULT_DEGREE 2
 
-#define FILTER_MODE 0 // 0: no filter; 1: ideal; 2: directly map table 
+#define FILTER_MODE 0 // 0: no filter; 1: ideal; 2: directly map table
 #define PF_FILTER_SIZE 512
 #define PF_FILTER_TAG_WIDTH 8
 
@@ -33,6 +35,8 @@
 #define META_TABLE_ASSOC 12
 
 class latetp;
+
+uint8_t get_dram_bw();
 
 struct latetpMetaTableEntry {
 
@@ -136,7 +140,7 @@ public:
   std::string benchmark;
 
   uint32_t numEntriesinTable = 0;
-  int waysForCache = 16-WAY_MARKOV;
+  int waysForCache = 16 - WAY_MARKOV;
 
   // stat
   uint64_t meta_table_lookups = 0;
@@ -149,47 +153,53 @@ public:
 
   struct PCTableEntry {
     int lookahead;
-    uint64_t degree;
+    int degree;
     uint64_t latePrefetchCount;
-    uint64_t accuratePrefetchCount;
+    uint64_t usefulPrefetchCount;
     uint64_t issuedPrefetchCount;
     uint64_t filledPrefetchCount;
     uint64_t missCount;
     deque<uint64_t> addrHistory;
 
     PCTableEntry(uint64_t _lastAddr = 0)
-        : lookahead(DEFAULT_LOOKAHEAD), degree(DEFAULT_DEGREE), latePrefetchCount(0), accuratePrefetchCount(0),
-          issuedPrefetchCount(0), filledPrefetchCount(0), missCount(0)
+        : lookahead(DEFAULT_LOOKAHEAD), degree(DEFAULT_DEGREE), latePrefetchCount(0), usefulPrefetchCount(0), issuedPrefetchCount(0), filledPrefetchCount(0),
+          missCount(0) {
+            // addrHistory.push_front(_lastAddr);
+          };
+    void update_counter()
     {
-      // addrHistory.push_front(_lastAddr);
-    };
-    void shift_counter()
-    {
-      float accuracy = 1.0 * accuratePrefetchCount / filledPrefetchCount;
+      float laterate = 1.0 * latePrefetchCount / (latePrefetchCount + usefulPrefetchCount);
+      float accuracy = 1.0 * (latePrefetchCount + usefulPrefetchCount) / (latePrefetchCount + filledPrefetchCount);
 
-      if (degree < 3 && latePrefetchCount >= 4 && accuracy > 0.5) {
-        degree += 1;
-      } else if (degree < 6 && latePrefetchCount >= 8 && accuracy > 0.75) {
-        degree += 1;
-      }
-
-      if (accuracy < 0.15) {
-        lookahead = 0;
-        if (degree > 1) {
-          degree -= 1;
+      int delta_degree = 0;
+      if (accuracy > 0.75) {
+        if (laterate > 0.1) {
+          delta_degree = 2;
+        } else {
+          delta_degree = 1;
         }
+      } else if (accuracy > 0.5) {
+        if (laterate > 0.1)
+          delta_degree = 1;
+      } else if (accuracy < 0.375) {
+        delta_degree -= 1;
       }
 
-      latePrefetchCount >>= 1;
-      accuratePrefetchCount >>= 1;
-      issuedPrefetchCount >>= 1;
-      filledPrefetchCount >>= 1;
-      missCount >>= 1;
+      degree += delta_degree;
+      if (degree < 1)
+        degree = 1;
+      else if (degree > 4)
+        degree = 4;
+
+      latePrefetchCount = 0;
+      usefulPrefetchCount = 0;
+      issuedPrefetchCount = 0;
+      filledPrefetchCount = 0;
+      missCount = 0;
     };
   };
-  
-  LRUSetAssociativeCache<PCTableEntry>* pcTable = new LRUSetAssociativeCache<PCTableEntry>(PC_TABLE_SIZE, PC_TABLE_ASSOC);
 
+  LRUSetAssociativeCache<PCTableEntry>* pcTable = new LRUSetAssociativeCache<PCTableEntry>(PC_TABLE_SIZE, PC_TABLE_ASSOC);
 
   uint64_t global_degree = DEFAULT_DEGREE;
   uint64_t late_prefetch_num = 0;
@@ -197,29 +207,31 @@ public:
   uint64_t useless_prefetch_num = 0;
   uint64_t epoch_demand = 0;
   std::set<uint64_t> unused_prefetches;
-#ifdef DYNAMIC_DEGREE
-  void tune_global_degree(){
+#ifdef DYNAMIC_GLOBAL_DEGREE
+  void tune_global_degree()
+  {
     float accuracy = 1.0 * accurate_prefetch_num / (accurate_prefetch_num + useless_prefetch_num);
     float laterate = 1.0 * late_prefetch_num / accurate_prefetch_num;
     int delta_degree = 0;
-    if (accuracy > 0.75){
-      if (laterate > 0.25)
+    if (accuracy > 0.75) {
+      if (laterate > 0.125) {
         delta_degree = 2;
-      else if (laterate > 0.125)
+      } else {
         delta_degree = 1;
-    }else if (accuracy < 0.375){
-      delta_degree = -1;
-    }else if (accuracy < 0.25){
-      delta_degree = -2;
-    }else{
-      if (laterate > 0.25)
+      }
+    } else if (accuracy > 0.5) {
+      if (laterate > 0.125)
         delta_degree = 1;
+    } else if (accuracy < 0.25) {
+      delta_degree -= 1;
     }
+
     global_degree += delta_degree;
-    if (global_degree > 8)
-      global_degree = 8;
-    else if (global_degree < 1)
+    if (global_degree < 1)
       global_degree = 1;
+    else if (global_degree > 4)
+      global_degree = 4;
+
     late_prefetch_num = 0;
     accurate_prefetch_num = 0;
     useless_prefetch_num = 0;
@@ -318,7 +330,8 @@ public:
 
   uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
                                     uint32_t metadata_in, std::string latepf);
-  uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in, champsim::address ip);
+  uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in,
+                                 champsim::address ip);
   void prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where);
   void prefetcher_cycle_operate();
   void prefetcher_final_stats();

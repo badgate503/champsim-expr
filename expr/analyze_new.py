@@ -32,6 +32,7 @@ WARM_UP = 0
 INTERVAL = 250000000
 parser = argparse.ArgumentParser()
 parser.add_argument("--traces", "-t", nargs="+")
+parser.add_argument("--list", "-l" )
 parser.add_argument("--print", "-a", action="store_true")
 parser.add_argument("--prefetcher", "-p")
 parser.add_argument("--json", "-j", action="store_true")
@@ -224,11 +225,13 @@ if max_workers != 0:
 
 
 trace_all=[]
+trace_map=dict()
 with open("./utils/tracelist", "r") as f:
     lines = f.readlines()
     for line in lines:
         traces = line.split(":", 1)[1].strip().split()
         trace_all.extend(traces)
+        trace_map[line.split(":", 1)[0].strip()] = traces
 print(trace_all)
 
 result = {a:{} for a in trace_all}
@@ -236,6 +239,9 @@ n = 0
 for path in glob.glob(f"./result/data/{args.prefetcher}/*.txt"):
 
     name = os.path.splitext(os.path.basename(path))[0].replace("_breif", "")  # xxx.txt -> xxx
+    if args.list:
+        if name not in trace_map[args.list]:
+            continue
     if name == "ipc":
         continue
     data = {}
