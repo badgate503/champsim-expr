@@ -15,7 +15,7 @@ UNDERLINE = '\033[4m'
 END = '\033[0m'
 TRACE_LIST = {}
 PF_LIST = [
-    "no",
+    # "no",
     # "baseline.1way",
     # "baseline.2way",
     # "baseline.3way",
@@ -29,17 +29,26 @@ PF_LIST = [
     "prophet",
     # "kairos",
     # "croage",
-    "prism",
-    "prism33",
+    # "prism",
+    # "prism33",
     # "prism_fixlevel",
     # "prism_rs",
     # "prism_runtimers",
     # "prism_dy",
-    "prism_dy2",
-    "prism_l2pf",
-    "prism_l3pf",
-    "prism_filter",
-    # "prism_ndy",
+    # "prism_dy2",
+    # "prism_l2pf",
+    # "prism_l3pf",
+    "prism_filte",
+    "prism_8to1",
+    # "prism_8to2",
+    # "prism_1to8",
+    # "prism_2to8",
+    # "prism_init1",
+    # "prism_init2",
+    # "prism_init8",
+    # "prism_warminit1",
+    # "prism_warminit2",
+    # "prism_warminit8",
 
     # "pctpinf.a1",
     # "pctpinf.a2",
@@ -167,8 +176,9 @@ METRICS = [
     'Insert_PC',
     # 'Lack_Tri',
     # 'Lack_TriMiss',
-    'Resize_L3Hit_rate',
-    'Resize_UPF_rate',
+    'Init_L3Hit_rate',
+    'Init_UPF_rate',
+    'Init_NormUPF_rate',
 ]
 BASELINE = "baseline4w"
 def get_measure(path, baseline_result = None):
@@ -185,7 +195,7 @@ def get_measure(path, baseline_result = None):
 
             for m in METRICS:
                 if line.startswith(m):
-                    if (result := re.search(rf'{m} \s*([0-9.]+)', line)) is not None:
+                    if (result := re.search(rf'{m} \s*([0-9.eE+-]+)', line)) is not None:
                         counters[m] = result.group(1)
 
                 # if line.startswith("PCM_laterate"):
@@ -330,50 +340,53 @@ if __name__ == "__main__":
             if (line.split(":")[0] != "nontemp"):
                 TRACE_LIST[line.split(":")[0]] =  sorted(line.split(":")[1].strip().split(" "))
 
-
+    with open(f"result/average.csv","w") as ff:
+        ff.write("Set,Prefetcher," + ",".join(METRICS) + "\n")
+        pass
     for set_name in TRACE_LIST.keys():
-        with open(f"result/{set_name}.csv", "w") as f:
-            f.write("Trace,Prefetcher," + ",".join(METRICS) + "\n")
-            baseline_result = {}
-            average = {pf:[] for pf in PF_LIST}
-            for trace in TRACE_LIST[set_name]:
-                baseline_result[trace] = get_measure(LOG_PATH +"/"+ BASELINE + "/" + (trace+".log"))
-                
-                for pf in PF_LIST:
-                    if os.path.exists(LOG_PATH +"/"+ pf + "/" + (trace+".log")):
-                        #print("Reading from: " + LOG_PATH +"/"+ pf + "/" + (trace+".log"))
-                        result = get_measure(LOG_PATH +"/"+ pf + "/" + (trace+".log"), baseline_result[trace])
-                        f.write(trace + "," + pf + "," + ",".join([result[m] for m in METRICS]) + "\n")
-                        average[pf].append(list(result.values()))
-                    else:
-                        #print(f"{RED}Warning: Log file for trace {trace} with prefetcher {pf} not found.{END}")
-                        pass
-            average_line = {pf: {m: "0" for m in METRICS} for pf in PF_LIST}
-            for m in METRICS:
-                if m == "IPC" or m == "IPCI":
-                    for pf in PF_LIST:
-                        total = 1.0
-                        count = 0
-                        for res in average[pf]:
-                            total *= float(res[METRICS.index(m)])
-                            count += 1
-                        if count > 0:
-                            average_line[pf][m] = f"{(pow(total, 1.0/count)):.4f}"
-                        else:
-                            average_line[pf][m] = "0.0000"
-                else:
-                    for pf in PF_LIST:
-                        total = 0.0
-                        count = 0
-                        for res in average[pf]:
-                            total += float(res[METRICS.index(m)])
-                            count += 1
-                        if count > 0:
-                            average_line[pf][m] = f"{(total / count):.4f}"
-                        else:
-                            average_line[pf][m] = "0.0000"
-            for pf in PF_LIST:
-                result = average_line[pf].values()
-                f.write("Average," + pf + "," + ",".join(result) + "\n")
-
+        with open(f"result/average.csv","a") as ff:
+            with open(f"result/{set_name}.csv", "w") as f:
+                f.write("Trace,Prefetcher," + ",".join(METRICS) + "\n")
+                baseline_result = {}
+                average = {pf:[] for pf in PF_LIST}
+                for trace in TRACE_LIST[set_name]:
+                    baseline_result[trace] = get_measure(LOG_PATH +"/"+ BASELINE + "/" + (trace+".log"))
                     
+                    for pf in PF_LIST:
+                        if os.path.exists(LOG_PATH +"/"+ pf + "/" + (trace+".log")):
+                            #print("Reading from: " + LOG_PATH +"/"+ pf + "/" + (trace+".log"))
+                            result = get_measure(LOG_PATH +"/"+ pf + "/" + (trace+".log"), baseline_result[trace])
+                            f.write(trace + "," + pf + "," + ",".join([result[m] for m in METRICS]) + "\n")
+                            average[pf].append(list(result.values()))
+                        else:
+                            #print(f"{RED}Warning: Log file for trace {trace} with prefetcher {pf} not found.{END}")
+                            pass
+                average_line = {pf: {m: "0" for m in METRICS} for pf in PF_LIST}
+                for m in METRICS:
+                    if m == "IPC" or m == "IPCI":
+                        for pf in PF_LIST:
+                            total = 1.0
+                            count = 0
+                            for res in average[pf]:
+                                total *= float(res[METRICS.index(m)])
+                                count += 1
+                            if count > 0:
+                                average_line[pf][m] = f"{(pow(total, 1.0/count)):.4f}"
+                            else:
+                                average_line[pf][m] = "0.0000"
+                    else:
+                        for pf in PF_LIST:
+                            total = 0.0
+                            count = 0
+                            for res in average[pf]:
+                                total += float(res[METRICS.index(m)])
+                                count += 1
+                            if count > 0:
+                                average_line[pf][m] = f"{(total / count):.4f}"
+                            else:
+                                average_line[pf][m] = "0.0000"
+                for pf in PF_LIST:
+                    result = average_line[pf].values()
+                    f.write("Average," + pf + "," + ",".join(result) + "\n")
+                    ff.write(f"{set_name}," + pf + "," + ",".join(result) + "\n")
+

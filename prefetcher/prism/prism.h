@@ -17,6 +17,9 @@
 #include "cache.h"
 #include "champsim.h"
 
+#define MULTI_LEVEL_PREFETCH
+#define INSERT_FILTE
+
 #define PC_TRIGGER_PREFETCHING
 #define PCQ_SIZE 8
 #define PC_META_TABLE_SIZE 4096 * 1 * 12
@@ -41,7 +44,7 @@
 #define PC_TABLE_TAG_WIDTH 12
 
 #define INIT_WAY_MARKOV 8
-#define MIN_WAY_MARKOV 2
+#define MIN_WAY_MARKOV 1
 #define MAX_WAY_MARKOV 8
 #define META_TABLE_SIZE (4096 * 12 * INIT_WAY_MARKOV)
 #define META_TABLE_ASSOC 12
@@ -171,13 +174,13 @@ public:
     uint64_t latePrefetchCount;
     uint64_t usefulPrefetchCount;
     uint64_t issuedPrefetchCount;
-    uint64_t missCount;
+    uint64_t hitCount;
     bool modified;
     deque<uint64_t> addrHistory;
 
     PCTableEntry(uint64_t _last_addr = 0, bool cache_hit = false)
         : lookahead(DEFAULT_LOOKAHEAD), degree(DEFAULT_DEGREE), latePrefetchCount(0), usefulPrefetchCount(0), issuedPrefetchCount(0),
-          missCount(cache_hit ? 0 : 1), modified(false)
+          hitCount(cache_hit ? 1 : 0), modified(false)
     {
       addrHistory.push_front(_last_addr);
     };
@@ -215,7 +218,6 @@ public:
       latePrefetchCount = 0;
       usefulPrefetchCount = 0;
       issuedPrefetchCount = 0;
-      missCount = 0;
     };
   };
 
@@ -237,6 +239,8 @@ public:
   int init_ways_for_pc_metadata_table;
   uint64_t unmodified_PC = 0;
   uint64_t inserted_PC = 0;
+  uint64_t init_insert_PC = 0;
+  uint64_t init_unmodified_PC = 0;
   std::deque<uint64_t> PCQ;
   // SRRIPSetAssociativeCache<MetaTableEntry>* pcMetaTable = new SRRIPSetAssociativeCache<MetaTableEntry>(PC_META_TABLE_SIZE, PC_META_TABLE_ASSOC);
   SRRIPSetAssociativeCache<MetaTableEntry>* pcMetaTable = nullptr;
@@ -293,6 +297,8 @@ public:
 
     if (!init_resized) {
       init_ways_for_pc_metadata_table = waysForPCTable;
+      init_insert_PC = inserted_PC;
+      init_unmodified_PC = unmodified_PC;
     }
 
     origin_waysForPCTable = waysForPCTable;
@@ -316,7 +322,7 @@ public:
   uint64_t resize_issued_prefetch = 0;
   long last_llc_hits = 0;
   long last_llc_misses = 0;
-  float init_resize_score, init_resize_llc_hit_rate, init_resize_useful_prefetch_rate;
+  float init_resize_score, init_resize_llc_hit_rate, init_resize_useful_prefetch_rate, init_resize_norm_upf;
   int init_ways_for_markov;
   void update_main_metatable_size()
   {
@@ -335,14 +341,14 @@ public:
       temp_useful_prefetch_rate = (1.0 * resize_useful_prefetch / resize_issued_prefetch);
 
     if (large_markov) {
-      temp_resize_score = 3 * temp_llc_hit_rate - 1 * temp_useful_prefetch_rate;
+      temp_resize_score = 3 * temp_llc_hit_rate - 2 * temp_useful_prefetch_rate;
       if (temp_resize_score > 0) {
         waysForCache = 16 - MIN_WAY_MARKOV;
         waysForMarkov = MIN_WAY_MARKOV;
         large_markov = false;
       }
     } else {
-      temp_resize_score = 1.5 * temp_llc_hit_rate - 1 * temp_useful_prefetch_rate;
+      temp_resize_score = 1 * temp_llc_hit_rate - 2 * temp_useful_prefetch_rate;
       if (temp_resize_score < 0) {
         waysForCache = 16 - MAX_WAY_MARKOV;
         waysForMarkov = MAX_WAY_MARKOV;
@@ -355,6 +361,7 @@ public:
       init_resize_score = temp_resize_score;
       init_resize_llc_hit_rate = temp_llc_hit_rate;
       init_resize_useful_prefetch_rate = temp_useful_prefetch_rate;
+      init_resize_norm_upf = 1.0 * resize_useful_prefetch / (llc_hits + llc_misses);
     }
 
     resize_useful_prefetch = 0;

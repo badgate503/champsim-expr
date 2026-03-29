@@ -198,6 +198,7 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
   /* Step6. Train Markov table */
   if (found_correlated_addr && should_pf && current_partition > 0) {
     AddMetadata(last_addr, target);
+    MT_inserts++;
   }
 
   /* Step7. Issue prefetches */
@@ -207,7 +208,7 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
     
     /* 使用 Addr 索引 Markov 分区得到预取目标地址 TargetAddr0 */
     auto MD_entry = GetMetadata(target, true);
-    MT_lookup++;
+    MT_lookups++;
     if (MD_entry) {
       find = true;
       MT_hits++;
@@ -224,7 +225,7 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
       degree++;
       if (degree < max_degree) {
         MD_entry = GetMetadata(PF_addr, true);
-        MT_lookup++;
+        MT_lookups++;
         if(MD_entry) {
           find = true;
           MT_hits++;
@@ -268,10 +269,11 @@ uint32_t triangel::prefetcher_cache_fill(champsim::address addr, long set, long 
 }
 
 void triangel::prefetcher_final_stats() {
-  cout << "MT_lookups " << MT_lookup << endl;
+  cout << "MT_lookups " << MT_lookups << endl;
   cout << "MT_hits " << MT_hits << endl;
   cout << "MT_lookup_reqs " << MT_lookup_reqs << endl;
   cout << "MT_lookup_returns " << MT_lookup_returns << endl;
+  cout << "MT_inserts " << MT_inserts << endl;
 }
 
 void triangel::prefetcher_cycle_operate() {}

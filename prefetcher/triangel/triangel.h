@@ -888,10 +888,11 @@ public: // All members shall be basic variables, pointers, or implement proper c
   uint64_t second_chance_timestamp = 0;
   int current_partition = 4; // Start with a neutral partition
 
-  uint64_t MT_lookup = 0;
+  uint64_t MT_lookups = 0;
   uint64_t MT_hits = 0;
   uint64_t MT_lookup_reqs = 0;
   uint64_t MT_lookup_returns = 0;
+  uint64_t MT_inserts = 0;
 
   AssociativeCache<TrainingUnitEntry>* TU = new AssociativeCache<TrainingUnitEntry>(1 << TRNGL_TU_INDEX_BITS, TRNGL_TU_ASSOC, LRU, "TU");
   AssociativeCache<HistorySamplerEntry>* HS = new AssociativeCache<HistorySamplerEntry>(1 << TRNGL_HS_INDEX_BITS, TRNGL_HS_ASSOC, LRU, "HS");

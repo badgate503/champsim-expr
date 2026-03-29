@@ -20,7 +20,7 @@
 // #define REGULAR_RESIZE
 #define INIT_RESIZE_WINDOW 100000
 #define REGULAR_RESIZE_WINDOW 10000000
-#define INIT_WAY_MARKOV 1
+#define INIT_WAY_MARKOV 8
 #define MIN_WAY_MARKOV 1
 #define MAX_WAY_MARKOV 8
 
@@ -191,8 +191,6 @@ public:
 
     if (llc_hits)
       temp_llc_hit_rate = (1.0 * llc_hits / (llc_hits + llc_misses));
-    else 
-      temp_llc_hit_rate = 0;
       
     if (num_issued_prefetch)
       temp_useful_prefetch_rate = (1.0 * num_useful_prefetch / num_issued_prefetch);
@@ -200,7 +198,7 @@ public:
       temp_useful_prefetch_rate = 0;
 
     if (waysForCache == (16 - MAX_WAY_MARKOV)) {
-      temp_resize_score = 3 * temp_llc_hit_rate - 1 * temp_useful_prefetch_rate;
+      temp_resize_score = 3 * temp_llc_hit_rate - 2 * temp_useful_prefetch_rate;
       if (temp_resize_score > 0) {
         waysForCache = 16 - MIN_WAY_MARKOV;
         llc_cache->set_available_ways(waysForCache);
@@ -222,7 +220,7 @@ public:
         cout << "Donot Resize Metadata table. Alloc " << MAX_WAY_MARKOV << " ways for metadata!" << endl;
       }
     } else if (waysForCache == (16 - MIN_WAY_MARKOV)) {
-      temp_resize_score = 1.5 * temp_llc_hit_rate - 1 * temp_useful_prefetch_rate;
+      temp_resize_score = 1 * temp_llc_hit_rate - 2 * temp_useful_prefetch_rate;
       if (temp_resize_score < 0) {
         waysForCache = 16 - MAX_WAY_MARKOV;
         llc_cache->set_available_ways(waysForCache);

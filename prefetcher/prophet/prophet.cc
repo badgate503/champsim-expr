@@ -102,6 +102,7 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
         uint64_t victimAddr = lastMeta->correlatedAddr;
         ProphetMetaTableEntry temp_entry(block_addr);
         metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
+        MT_inserts++;
 
         // victim buffer logic
         if (profileReplTable[ip] > 1) {
@@ -124,9 +125,12 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
     } else {
       ProphetMetaTableEntry temp_entry(block_addr);
       if (!inTraining && enablePGLRU) {
-        if (profileReplTable.find(ip) != profileReplTable.end())
+        if (profileReplTable.find(ip) != profileReplTable.end()){
           metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
+          MT_inserts++;
+        }
       } else {
+        MT_inserts++;
         if (!metaTable->insert(lastAddr, temp_entry, 1)) // lyq: when profiling，prio = 1 ？
         {
           numEntriesinTable++;
@@ -143,13 +147,17 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
 int prophet::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
 {
   int issued = 0;
+  MT_lookup_reqs++;
+  bool find_success = false;
   for (int i = 0; i < globalDegree; i++) {
     ProphetMetaTableEntry* candidate = metaTable->find(lookup);
+    MT_lookups++;
     if (candidate == nullptr)
       break;
     addToUsedPool(lookup);
     if (candidate->correlatedAddr != 0) {
-
+      MT_hits++;
+      find_success = true;
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
         addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
 #ifdef ELABORATE_LOG
@@ -161,18 +169,26 @@ int prophet::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint6
       lookup = candidate->correlatedAddr;
     }
   }
+  if (find_success){
+    MT_lookup_returns++;
+  }
   return issued;
 }
 
 int prophet::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
 {
   int issued = 0;
+  bool find_success = false;
+  MT_lookup_reqs++;
   for (int i = 0; i < globalDegree; i++) {
     ProphetMRBTableEntry* candidate = mrbTable->find(lookup);
+    MT_lookups++;
     if (candidate == nullptr)
       break;
     addToUsedPool(lookup);
     if (candidate->correlatedAddr != 0) {
+      MT_hits++;
+      find_success = true;
       lookup = candidate->correlatedAddr;
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
 #ifdef ELABORATE_LOG
@@ -183,6 +199,9 @@ int prophet::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t
         issued++;
       }
     }
+  }
+  if (find_success){
+    MT_lookup_returns++;
   }
   return issued;
 }
@@ -253,6 +272,13 @@ void prophet::prefetcher_final_stats()
 #ifdef ELABORATE_LOG
   logfile.close();
 #endif
+
+  cout << "MT_lookups " << MT_lookups << endl;
+  cout << "MT_hits " << MT_hits << endl;
+  cout << "MT_lookup_reqs " << MT_lookup_reqs << endl;
+  cout << "MT_lookup_returns " << MT_lookup_returns << endl;
+  cout << "MT_inserts " << MT_inserts << endl;
+
   if (inTraining) {
     
     hint_file << numEntriesinTable << std::endl;

@@ -25,7 +25,7 @@
 #define MRB_TABLE_SIZE 65526
 #define MRB_TABLE_ASSOC 16
 #define MRB_MAX_COUNTER 3
-#define GLOBAL_DEGREE 1 // metatable & mrb_table has this degree
+#define GLOBAL_DEGREE 4 // metatable & mrb_table has this degree
 
 // #define IS_TRAIN
 #define ENABLE_MRB true
@@ -213,7 +213,11 @@ public:
   bool inTraining = false;
 #endif
   bool enableMRB = ENABLE_MRB;
+#ifdef IS_TRAIN
+  int globalDegree = 1;
+#else
   int globalDegree = GLOBAL_DEGREE;
+#endif
   bool disablePF = false;
   std::string benchmark;
   bool enableInsertFilter = true;
@@ -226,6 +230,13 @@ public:
   long long global_timestamp = 0;
   uint32_t allMisses = 0;
   int waysForCache = 8;
+
+  // stat MT lookups
+  uint64_t MT_lookups = 0;
+  uint64_t MT_hits = 0;
+  uint64_t MT_inserts = 0;
+  uint64_t MT_lookup_reqs = 0;
+  uint64_t MT_lookup_returns = 0;
 
   std::map<uint64_t, TrainEntry> trainTable;
 
