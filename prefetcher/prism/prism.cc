@@ -383,8 +383,7 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
 #ifdef PC_TRIGGER_PREFETCHING
   // train PC Meta Table
   if (enable_PC_Trigger_prefetching && train_pc_meta_table) {
-    // if (PCQ.size() > 0) {
-    if (!cache_hit && PCQ.size() > 0) {
+    if (PCQ.size() > 0) {
       uint64_t triggerIP = *PCQ.rbegin();
       if (triggerIP) {
         uint64_t pc_meta_table_key = hash_xor(triggerIP);
@@ -393,25 +392,6 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
           pcMetaTable->set_default(pc_meta_table_key);
         else
           pcMetaTable->touch(pc_meta_table_key);
-      }
-    }
-  }
-
-  // prefetches from PC Meta Table
-  if (enable_PC_Trigger_prefetching) {
-    uint64_t lookupPC = hash_xor(pc);
-    auto pc_meta_entry = pcMetaTable->find(lookupPC);
-    if (pc_meta_entry) {
-      pcMetaTable->touch(lookupPC);
-#ifdef PREFETCH_FILTER
-      if (!pf_filter->find(pc_meta_entry->data.target_addr))
-#endif
-      {
-        prefetch_line({pc_meta_entry->data.target_addr << LOG2_BLOCK_SIZE}, true, 0);
-#ifdef PREFETCH_FILTER
-        pf_filter->insert(pc_meta_entry->data.target_addr, true);
-#endif
-        PCM_issued_prefetches.insert(pc_meta_entry->data.target_addr);
       }
     }
   }
@@ -425,11 +405,31 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
     }
   }
   if (!already_in_queue) {
+    // update PCQ
     if (PCQ.size() < PCQ_SIZE) {
       PCQ.push_front(pc);
     } else {
       PCQ.pop_back();
       PCQ.push_front(pc);
+    }
+
+    // prefetches from PC Meta Table
+    if (enable_PC_Trigger_prefetching) {
+      uint64_t lookupPC = hash_xor(pc);
+      auto pc_meta_entry = pcMetaTable->find(lookupPC);
+      if (pc_meta_entry) {
+        pcMetaTable->touch(lookupPC);
+#ifdef PREFETCH_FILTER
+        if (!pf_filter->find(pc_meta_entry->data.target_addr))
+#endif
+        {
+          prefetch_line({pc_meta_entry->data.target_addr << LOG2_BLOCK_SIZE}, true, 0);
+#ifdef PREFETCH_FILTER
+          pf_filter->insert(pc_meta_entry->data.target_addr, true);
+#endif
+          PCM_issued_prefetches.insert(pc_meta_entry->data.target_addr);
+        }
+      }
     }
   }
 #endif

@@ -40,6 +40,8 @@ PF_LIST = [
     # "prism_l3pf",
     "prism_filte",
     "prism_8to1",
+    # "prism_pctp_filter",
+    # "prism_pctphit",
     # "prism_8to2",
     # "prism_1to8",
     # "prism_2to8",
@@ -390,3 +392,46 @@ if __name__ == "__main__":
                     f.write("Average," + pf + "," + ",".join(result) + "\n")
                     ff.write(f"{set_name}," + pf + "," + ",".join(result) + "\n")
 
+    import pandas as pd
+    import numpy as np
+
+    df = pd.read_csv("result/average.csv")
+
+    geo_cols = ["IPC", "IPCI"]
+    measure_cols = [col for col in df.columns if col not in ["Set", "Prefetcher"]]
+    mean_cols = [col for col in measure_cols if col not in geo_cols]
+
+    def geomean(x):
+        x = x[x > 0]
+        return np.exp(np.mean(np.log(x))) if len(x) > 0 else np.nan
+
+    avg_rows = []
+
+    for pf, group in df.groupby("Prefetcher"):
+        row = {
+            "Set": "Average",
+            "Prefetcher": pf
+        }
+        
+        # 几何平均
+        for col in geo_cols:
+            if col in group:
+                row[col] = geomean(group[col])
+        
+        # 算术平均
+        for col in mean_cols:
+            row[col] = group[col].mean()
+        
+        avg_rows.append(row)
+
+    avg_df = pd.DataFrame(avg_rows)
+
+    # 保证列顺序一致
+    avg_df = avg_df[df.columns]
+
+    # 拼接（原数据 + 平均行）
+    out_df = pd.concat([df, avg_df], ignore_index=True)
+
+    out_df.to_csv("result/average.csv", index=False)
+
+    print(out_df)
