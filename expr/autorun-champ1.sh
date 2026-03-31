@@ -65,3 +65,30 @@
 # ./compiler.py -p resize -m ipc -f INIT_WINDOW=1000000 -e resize1m
 # ./compiler.py -p resize -m ipc -f INIT_WINDOW=10000000 -e resize10m
 /mnt/data/lyq/Kairos/bin/prophet.4c.t --warmup-instructions 50 --simulation-instructions 200 /mnt/data/lyq/champtraces/traces-gap/bc-0.champsimtrace.gz /mnt/data/lyq/champtraces/traces-gap/cc-14.champsimtrace.gz /mnt/data/lyq/champtraces/traces-gap/bfs-8.champsimtrace.gz /mnt/data/lyq/champtraces/traces-gap/cc-6.champsimtrace.gz
+
+./compiler.py -p prophet -m ipc -c config_ipcp -e l1ipcp.prophet
+./compiler.py -p triangel -m ipc -c config_ipcp -e l1ipcp.triangel
+./compiler.py -p prism -m ipc -c config_ipcp -e l1ipcp.prism
+
+./compiler.py -p prophet -m ipc -c config_berti -e l1berti.prophet
+./compiler.py -p triangel -m ipc -c config_berti -e l1berti.triangel
+./compiler.py -p prism -m ipc -c config_berti -e l1berti.prism
+
+./compiler.py -p prophet -m ipc -c config_dram1200 -e dram1200.prophet
+./compiler.py -p prophet -m ipc -c config_dram2400 -e dram2400.prophet
+./compiler.py -p prophet -m ipc -c config_dram3600 -e dram3600.prophet
+./compiler.py -p prophet -m ipc -c config_dram6000 -e dram6000.prophet
+./compiler.py -p triangel -m ipc -c config_dram1200 -e dram1200.triangel
+./compiler.py -p triangel -m ipc -c config_dram2400 -e dram2400.triangel
+./compiler.py -p triangel -m ipc -c config_dram3600 -e dram3600.triangel
+./compiler.py -p triangel -m ipc -c config_dram6000 -e dram6000.triangel
+./compiler.py -p prism -m ipc -c config_dram1200 -e dram1200.prism
+./compiler.py -p prism -m ipc -c config_dram2400 -e dram2400.prism
+./compiler.py -p prism -m ipc -c config_dram3600 -e dram3600.prism
+./compiler.py -p prism -m ipc -c config_dram6000 -e dram6000.prism
+
+./compiler.py -p prophet -m ipc -c config_cache1_4 -e cache1_4.prophet
+./compiler.py -p triangel -m ipc -c config_cache1_4 -e cache1_4.triangel
+./compiler.py -p prism -m ipc -c config_cache1_4 -e cache1_4.prism
+
+./submitter.py -p l1berti.prophet l1berti.triangel l1berti.prism dram1200.prophet dram1200.triangel dram1200.prism dram2400.prophet dram2400.triangel dram2400.prism dram3600.prophet dram3600.triangel dram3600.prism dram6000.prophet dram6000.triangel dram6000.prism cache1_4.prophet cache1_4.triangel cache1_4.prism -l gap google ligra ml spec17

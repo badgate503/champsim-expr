@@ -15,18 +15,18 @@ UNDERLINE = '\033[4m'
 END = '\033[0m'
 TRACE_LIST = {}
 PF_LIST = [
-    # "no",
-    # "baseline.1way",
-    # "baseline.2way",
-    # "baseline.3way",
-    # "baseline.4way",
-    # "baseline.5way",
-    # "baseline.6way",
-    # "baseline.7way",
-    # "baseline.8way",
+    "no",
+    "baseline.1way",
+    "baseline.2way",
+    "baseline.3way",
+    "baseline.4way",
+    "baseline.5way",
+    "baseline.6way",
+    "baseline.7way",
+    "baseline.8way",
     # "acc_stat",
-    "triangel",
-    "prophet",
+    # "triangel",
+    # "prophet",
     # "kairos",
     # "croage",
     # "prism",
@@ -38,8 +38,15 @@ PF_LIST = [
     # "prism_dy2",
     # "prism_l2pf",
     # "prism_l3pf",
-    "prism_filte",
-    "prism_8to1",
+    # "prism_filte",
+    # "prism_final",
+    # "prism_coverage_05",
+    # "prism_coverage_15",
+    # "prism_coverage_25",
+    # "prism_coverage_35",
+    # "prism_coverage_50",
+    # "prism_accuracy_rrpv",
+    # "prism_8to1",
     # "prism_pctp_filter",
     # "prism_pctphit",
     # "prism_8to2",
@@ -79,6 +86,7 @@ PF_LIST = [
     # "resize_tr",
     # "resize_pr",
     # "resize_kr",
+    # "resize_prism",
     # "resize1w",
     # "resize10w",
     # "resize1m",
@@ -181,6 +189,8 @@ METRICS = [
     'Init_L3Hit_rate',
     'Init_UPF_rate',
     'Init_NormUPF_rate',
+    "L2C_PF_Issue",
+    "L2C_PF_Fill",
 ]
 BASELINE = "baseline4w"
 def get_measure(path, baseline_result = None):
@@ -296,7 +306,8 @@ def get_measure(path, baseline_result = None):
         counters['L2-MPKI'] = f"{((load_l2c['MISS'] + rfo_l2c['MISS']) / 200_000)}"
         counters['MPKI'] = f"{((load_llc['MISS'] + rfo_llc['MISS']) / 200_000)}"
         
-        # counters['L2C_PFhit'] = f"{data_l2pf_access['HIT']}"
+        counters['L2C_PF_Issue'] = f"{data_l2pf['ISSUED']}"
+        counters['L2C_PF_Fill'] = f"{data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']}"
         # counters['L2C_DemandHit'] = f"{load_l2c['HIT'] / load_l2c['ACCESS']}"
         counters['L2C_UsefulPF'] = f"{data_l2pf['USEFUL'] / (data_l2pf['ISSUED']) if data_l2pf['ISSUED'] > 0 else 0.0} "
         # counters['L2C_UselessPF'] = f"{data_l2pf['USELESS'] / (data_l2pf['ISSUED']) if data_l2pf['ISSUED'] > 0 else 0.0} "
@@ -308,6 +319,7 @@ def get_measure(path, baseline_result = None):
         if baseline_result is not None:
             if baseline_result['L2C_Demand_miss'] > 0:
                 counters['L2C_Coverage'] = f"{(baseline_result['L2C_Demand_miss'] - (load_l2c['MISS'] + rfo_l2c['MISS'])) / baseline_result['L2C_Demand_miss']}"
+                #counters['L2C_Coverage'] = f"{data_l2pf['USEFUL']/(data_l2pf['USEFUL']+load_l2c['MISS']+rfo_l2c['MISS'])}"
                 # counters['L2C_Overprediction']
             else:
                 counters['L2C_Coverage'] = f"{0.0}"
@@ -315,10 +327,10 @@ def get_measure(path, baseline_result = None):
             counters['L2C_Coverage'] = f"{0.0}"
             
         
-        # if (data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']) > 10:
-            # counters['L2C_Accuracy'] = f"{((data_l2pf['USEFUL'] + data_l2pf['LATE']) / (data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']))}"
-        if (data_l2pf['ISSUED']) > 0:
-            counters['L2C_Accuracy'] = f"{((data_l2pf['USEFUL'] + data_l2pf['LATE']) / (data_l2pf['ISSUED']))}"
+        if (data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']) > 10:
+            counters['L2C_Accuracy'] = f"{((data_l2pf['USEFUL'] + data_l2pf['LATE']) / (data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']))}"
+        # if (data_l2pf['ISSUED']) > 0:
+        #     counters['L2C_Accuracy'] = f"{((data_l2pf['USEFUL'] + data_l2pf['LATE']) / (data_l2pf['ISSUED']))}"
         if data_l2pf['USEFUL'] > 0:
             counters['L2C_Timeliness'] = f"{(data_l2pf['USEFUL'] / (data_l2pf['USEFUL'] + data_l2pf['LATE']))}"
 
@@ -327,6 +339,8 @@ def get_measure(path, baseline_result = None):
             current_dram_traffic = rq_rbh + rq_rbm + wq_rbh + wq_rbm
             if baseline_dram_traffic > 0:
                 counters['DRAM_Traffic'] = str(1.0*current_dram_traffic / baseline_dram_traffic)
+            if current_dram_traffic < baseline_dram_traffic:
+                print(f"{path} : baseline fill: {baseline_result['L2C_PF_Fill']}, cur fill: {counters['L2C_PF_Fill']}. baseline issue: {baseline_result['L2C_PF_Issue']}, cur issue: {counters['L2C_PF_Issue']}")
         else:
             counters['DRAM_Traffic'] = str(rq_rbh + rq_rbm + wq_rbh + wq_rbm)
         #print(counters)
@@ -339,7 +353,7 @@ if __name__ == "__main__":
 
     with open("utils/tracelist", "r") as f:
         for line in f:
-            if (line.split(":")[0] != "nontemp"):
+            if (line.split(":")[0] == "gap" or line.split(":")[0] == "ligra" or line.split(":")[0] == "ml" or line.split(":")[0] == "google" or line.split(":")[0] == "spec17"):
                 TRACE_LIST[line.split(":")[0]] =  sorted(line.split(":")[1].strip().split(" "))
 
     with open(f"result/average.csv","w") as ff:
