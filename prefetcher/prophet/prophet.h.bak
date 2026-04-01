@@ -213,11 +213,11 @@ public:
 #else
   bool inTraining = false;
 #endif
-  bool enableMRB = ENABLE_MRB;
+  bool enableMRB = false;
 #ifdef IS_TRAIN
   int globalDegree = 1;
 #else
-  int globalDegree = GLOBAL_DEGREE;
+  int globalDegree = 1;
 #endif
   bool disablePF = false;
   std::string benchmark;
@@ -238,18 +238,6 @@ public:
   uint64_t MT_inserts = 0;
   uint64_t MT_lookup_reqs = 0;
   uint64_t MT_lookup_returns = 0;
-
-  bool warmup_reset = false;
-  void reset_stat_counters()
-  {
-    MT_lookups = 0;
-    MT_hits = 0;
-    MT_inserts = 0;
-    MT_lookup_reqs = 0;
-    MT_lookup_returns = 0;
-
-    warmup_reset = true;
-  }
 
   std::map<uint64_t, TrainEntry> trainTable;
 
@@ -353,7 +341,7 @@ public:
       } else if (num_entries <= N_LLC_SET * 12 * 8) {
         waysForCache = 8;
       } else {
-        waysForCache = 8;
+        assert(false && "Error: Incorrectly formatted line.");
       }
 
       if (!disablePF) {

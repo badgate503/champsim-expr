@@ -44,7 +44,7 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
 
   // 1.search
   ProphetMetaTableEntry* metadata = metaTable->find(block_addr);
-  ProphetMRBTableEntry* reuseData = mrbTable->find(block_addr);
+  //ProphetMRBTableEntry* reuseData = mrbTable->find(block_addr);
 
   uint64_t lastAddr = 0;
   auto pc_entry = pcTable->find(ip);
@@ -58,11 +58,6 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
 
   if (lastAddr == block_addr)
     return;
-  if (reuseData) {
-    if (reuseData->counter < MRB_MAX_COUNTER)
-      reuseData->counter++;
-    mrbTable->set_mru(block_addr);
-  }
   if (metadata) {
     metaTable->set_mru(block_addr);
     if (profileUtiTable.find(block_addr) != profileUtiTable.end()) {
@@ -79,9 +74,7 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
   // 2.issue: metadata table
   uint64_t lookup = block_addr;
   int issued_by_metatable = issue_metatable(metaTable, lookup, ip, pref_addr);
-  if (enableMRB) {
-    int issued_by_reuse = issue_mrbtable(mrbTable, lookup, ip, pref_addr);
-  }
+  int issued_by_reuse = 0;
   for (auto& prefetch_address : pref_addr) {
     // llc_cache->prefetch_line(ip, addr, prefetch_address, FILL_L2, 0);
     prefetched_addr[prefetch_address >> LOG2_BLOCK_SIZE] = ip;
@@ -101,32 +94,15 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
       if (!matched) {
         uint64_t victimAddr = lastMeta->correlatedAddr;
         ProphetMetaTableEntry temp_entry(block_addr);
-        metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
+        metaTable->insert(lastAddr, temp_entry, 1);
         MT_inserts++;
 
-        // victim buffer logic
-        if (profileReplTable[ip] > 1) {
-          ProphetMRBTableEntry* victimMeta = mrbTable->find(lastAddr);
-          if (!victimMeta) {
-            ProphetMRBTableEntry temp_entry(victimAddr);
-            mrbTable->insert(lastAddr, temp_entry);
-          } else {
-            if (victimMeta->correlatedAddr == victimAddr) {
-              if (victimMeta->counter < MRB_MAX_COUNTER) {
-                victimMeta->counter++;
-              }
-            } else {
-              ProphetMRBTableEntry temp_entry(victimAddr);
-              mrbTable->insert(lastAddr, temp_entry);
-            }
-          }
-        }
       }
     } else {
       ProphetMetaTableEntry temp_entry(block_addr);
       if (!inTraining && enablePGLRU) {
         if (profileReplTable.find(ip) != profileReplTable.end()){
-          metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
+          metaTable->insert(lastAddr, temp_entry, 1);
           MT_inserts++;
         }
       } else {
@@ -178,12 +154,17 @@ int prophet::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint6
 int prophet::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t pc, std::vector<uint64_t>& addresses)
 {
   int issued = 0;
+  bool find_success = false;
+  MT_lookup_reqs++;
   for (int i = 0; i < globalDegree; i++) {
     ProphetMRBTableEntry* candidate = mrbTable->find(lookup);
+    MT_lookups++;
     if (candidate == nullptr)
       break;
     addToUsedPool(lookup);
     if (candidate->correlatedAddr != 0) {
+      MT_hits++;
+      find_success = true;
       lookup = candidate->correlatedAddr;
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
 #ifdef ELABORATE_LOG
@@ -194,6 +175,9 @@ int prophet::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t
         issued++;
       }
     }
+  }
+  if (find_success){
+    MT_lookup_returns++;
   }
   return issued;
 }
@@ -236,9 +220,6 @@ uint32_t prophet::prefetcher_cache_operate(champsim::address addr, champsim::add
     }
   }
 #endif
-  if (!warmup_reset && !llc_cache->warmup) {
-    reset_stat_counters();
-  }
   vector<uint64_t> prefetch_candidate;
 
   invoke_prefetcher(ip.to<uint64_t>(), addr.to<uint64_t>(), cache_hit, 0, prefetch_candidate);

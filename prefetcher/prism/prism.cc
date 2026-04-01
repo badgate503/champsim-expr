@@ -7,6 +7,7 @@ int prism::issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree)
   auto pc_entry = pcTable->find(pc);
   pf_filter_entry *last_filter_entry = nullptr, *cur_filter_entry = nullptr;
 
+#ifdef PREFETCH_FILTER
   auto filter_entry = pf_filter->find(lookup);
   if (filter_entry && filter_entry->next) {
     filter_entry = filter_entry->next;
@@ -31,14 +32,15 @@ int prism::issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree)
       }
     }
   }
+#endif
 
   int i;
   for (i = cur; i < degree; i++) {
     auto entry = mainMetaTable->find(lookup);
-    main_table_lookups++;
+    MT_lookups++;
     if (entry == nullptr)
       break;
-    main_table_hits++;
+    MT_hits++;
     bool success;
 #ifdef MULTI_LEVEL_PREFETCH
     if (i < 3) {
@@ -97,10 +99,8 @@ int prism::issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree)
 //   auto pc_entry = pcTable->find(pc);
 //   for (int i = 0; i < degree; i++) {
 //     auto entry = mainMetaTable->find(lookup);
-//     main_table_lookups++;
 //     if (entry == nullptr)
 //       break;
-//     main_table_hits++;
 // #ifdef PREFETCH_FILTER
 //     if (pf_filter->find(entry->target_addr)) {
 //       lookup = entry->target_addr;
@@ -169,39 +169,39 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
   uint64_t pc = ip.to<uint64_t>();
   uint64_t block_addr = addr.to<uint64_t>() >> LOG2_BLOCK_SIZE;
 
+  if (!warmup_reset && !llc_cache->warmup) {
+    reset_stat_counters();
+  }
+
   if (pc == 0 || block_addr == 0)
     return metadata_in;
+  if (type == access_type::LOAD || type == access_type::RFO)
+    demand++;
 
   // resize
-  if (!llc_cache->warmup) {
-    if (type == access_type::LOAD || type == access_type::RFO)
-      demand++;
+  if (!llc_cache->warmup && !init_sample) {
+    init_sample = true;
+    sample_start = true;
+    reset_for_sample();
+  }
+  if (!llc_cache->warmup && demand >= SAMPLE_INTERVAL) {
+    sample_start = true;
+    reset_for_sample();
+  }
+
+  if (sample_start) {
     if (useful_prefetch)
       resize_useful_prefetch++;
 
-    if (!init_resized) {
-      if (demand >= INIT_RESIZE_WINDOW) {
+    if (demand >= RESIZE_SAMPLE_WINDOW) {
 #ifdef PC_TRIGGER_PREFETCHING
-        update_pc_metatable_size();
+      update_pc_metatable_size();
 #endif
 #ifdef METADATA_RESIZE
-        update_main_metatable_size();
+      update_main_metatable_size();
 #endif
-        resize_cache();
-        init_resized = true;
-        demand = 0;
-      }
-    } else {
-      if (demand >= RUNTIME_RESIZE_WINDOW) {
-#ifdef PC_TRIGGER_PREFETCHING
-        update_pc_metatable_size();
-#endif
-#ifdef METADATA_RESIZE
-        update_main_metatable_size();
-#endif
-        resize_cache();
-        demand = 0;
-      }
+      resize_cache();
+      sample_start = false;
     }
   }
 
@@ -294,11 +294,16 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
 #endif
 
       if (cur_degree > 0) {
+#ifndef REPLACEMENT_POLICY
+        auto last_metadata = mainMetaTable->find(block_addr);
+        if (last_metadata) {
+          mainMetaTable->set_mru(block_addr);
+        }
+#endif
         issue_mainMetatable(pc, block_addr, cur_degree);
       }
 
       // training
-      // auto last_metadata = mainMetaTable->find(last_addr);
       uint64_t trigger_addr = 0;
       if (pc_entry->data.addrHistory.size() > pc_entry->data.lookahead)
         trigger_addr = pc_entry->data.addrHistory[pc_entry->data.lookahead];
@@ -313,11 +318,13 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
           }
           if (exist_metadata) {
             if (exist_metadata->target_addr == block_addr) {
+#ifdef REPLACEMENT_POLICY
               mainMetaTable->touch(trigger_addr, pc);
+#endif
             } else {
               // metadata conflict
 #ifndef CONFLICT_PREFETCHING
-#ifdef INSERT_FILTE
+#ifdef INSERTION_POLICY
               if (pc_entry->data.hitCount < 7)
 #endif
                 mainMetaTable->insert(trigger_addr, pc, {block_addr});
@@ -343,7 +350,7 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
 #endif
             }
           } else {
-#ifdef INSERT_FILTE
+#ifdef INSERTION_POLICY
             if (pc_entry->data.hitCount < 7)
 #endif
               mainMetaTable->insert(trigger_addr, pc, {block_addr});
@@ -388,6 +395,7 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
       if (triggerIP) {
         uint64_t pc_meta_table_key = hash_xor(triggerIP);
         auto victim_pc_meta_entry = pcMetaTable->insert(pc_meta_table_key, {block_addr});
+        PCT_inserts++;
         if (!victim_pc_meta_entry.valid || victim_pc_meta_entry.key != pc_meta_table_key)
           pcMetaTable->set_default(pc_meta_table_key);
         else
@@ -417,7 +425,9 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
     if (enable_PC_Trigger_prefetching) {
       uint64_t lookupPC = hash_xor(pc);
       auto pc_meta_entry = pcMetaTable->find(lookupPC);
+      PCT_lookups++;
       if (pc_meta_entry) {
+        PCT_hits++;
         pcMetaTable->touch(lookupPC);
 #ifdef PREFETCH_FILTER
         if (!pf_filter->find(pc_meta_entry->data.target_addr))
@@ -476,9 +486,14 @@ void prism::prefetcher_final_stats()
   logfile.close();
 #endif
 
-  cout << "MT_lookups " << main_table_lookups << endl;
-  cout << "MT_hits " << main_table_hits << endl;
-  cout << "MT_hitrate " << (main_table_lookups ? (double)main_table_hits / main_table_lookups : 0) << endl;
+  cout << "MT_lookups " << MT_lookups << endl;
+  cout << "MT_hits " << MT_hits << endl;
+  cout << "MT_inserts " << MT_inserts << endl;
+  cout << "PCT_lookups " << PCT_lookups << endl;
+  cout << "PCT_hits " << PCT_hits << endl;
+  cout << "PCT_inserts " << PCT_inserts << endl;
+
+  cout << "MT_hitrate " << (MT_lookups ? (double)MT_hits / MT_lookups : 0) << endl;
   cout << "MT_issuedpf " << main_table_issued_prefetches << endl;
   cout << "MT_accuratepf " << main_table_accurate_prefetches << endl;
   cout << "MT_accuracy " << (main_table_issued_prefetches ? (double)main_table_accurate_prefetches / main_table_issued_prefetches : 0) << endl;
@@ -516,10 +531,15 @@ void prism::prefetcher_cycle_operate() {}
 
 bool prismMetaTable::insert(uint64_t key, uint64_t ip, const MetaTableEntry& data)
 {
+  prefetcher->MT_inserts++;
   reverse_metatable[data.target_addr].insert(key);
 
   Entry victim_entry = Super::insert(key, data);
+#ifdef REPLACEMENT_POLICY
   Super::set_default(key, ip);
+#else
+  Super::set_mru(key);
+#endif
 
   bool ret = false;
   if (victim_entry.valid) {
@@ -546,7 +566,11 @@ void prismMetaTable::insert_for_resize(uint64_t key, const MetaTableEntry& data,
 {
   reverse_metatable[data.target_addr].insert(key);
   auto victim_entry = Super::insert(key, data);
-  set_rrpv(key, rrpv_value);
+#ifdef REPLACEMENT_POLICY
+  Super::set_rrpv(key, rrpv_value);
+#else
+  Super::set_mru(key);
+#endif
   if (victim_entry.valid) {
     reverse_metatable[victim_entry.data.target_addr].erase(victim_entry.key);
   }

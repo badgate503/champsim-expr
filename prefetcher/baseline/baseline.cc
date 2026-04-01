@@ -8,10 +8,10 @@ int baseline::issue_metatable(baselineMetaTable* metaTable, uint64_t pc, uint64_
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
     baselineMetaTableEntry* candidate = metaTable->find(lookup);
-    meta_table_lookups++;
+    MT_lookups++;
     if (candidate == nullptr)
       break;
-    meta_table_hits++;
+    MT_hits++;
     if (candidate->correlated_addr != 0) {
       if (!isAlreadyInQueue(addresses, candidate->correlated_addr)) {
         addresses.push_back(candidate->correlated_addr);
@@ -97,6 +97,10 @@ uint32_t baseline::prefetcher_cache_operate(champsim::address addr, champsim::ad
     meta_table_accurate_prefetches++;
   }
 
+  if(!warmup_reset && !llc_cache->warmup){
+    reset_stat_counters();
+  }
+
   uint64_t pc = ip.to<uint64_t>();
   uint64_t block_addr = addr.to<uint64_t>() >> LOG2_BLOCK_SIZE;
   vector<uint64_t> pref_addr;
@@ -171,24 +175,15 @@ uint32_t baseline::prefetcher_cache_operate(champsim::address addr, champsim::ad
       } else {
         uint64_t victim_addr = last_meta->correlated_addr;
         baselineMetaTableEntry temp_entry(block_addr);
-#ifdef NOMD_WHEN_HIT
-        if (!cache_hit)
-          metaTable->insert(insert_key, temp_entry, 1);
-#else
         metaTable->insert(insert_key, temp_entry);
-#endif
+        MT_inserts++;
       }
     } else {
       baselineMetaTableEntry temp_entry(block_addr);
-#ifdef NOMD_WHEN_HIT
-      if (!cache_hit)
-        if (!metaTable->insert(insert_key, temp_entry, 1))
-          numEntriesinTable++;
-#else
       if (!metaTable->insert(insert_key, temp_entry)) {
         numEntriesinTable++;
       }
-#endif
+      MT_inserts++;
     }
   }
 
@@ -232,9 +227,11 @@ void baseline::prefetcher_final_stats()
 #ifdef MISS_CLASS_LOG
   logfile.close();
 #endif
-  cout << "MT_lookups " << meta_table_lookups << endl;
-  cout << "MT_hits " << meta_table_hits << endl;
-  cout << "MT_hitrate " << (meta_table_lookups ? (double)meta_table_hits / meta_table_lookups : 0) << endl;
+  cout << "MT_lookups " << MT_lookups << endl;
+  cout << "MT_hits " << MT_hits << endl;
+  cout << "MT_inserts " << MT_inserts << endl;
+
+  cout << "MT_hitrate " << (MT_lookups ? (double)MT_hits / MT_lookups : 0) << endl;
   cout << "MT_issuedpf " << meta_table_issued_prefetches << endl;
   cout << "MT_accuratepf " << meta_table_accurate_prefetches << endl;
   cout << "MT_accuracy " << (meta_table_issued_prefetches ? (double)meta_table_accurate_prefetches / meta_table_issued_prefetches : 0) << endl;

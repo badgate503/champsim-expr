@@ -1,9 +1,9 @@
 {
-    "executable_name": "prism.4c",
+    "executable_name": "cache1_4.prism",
     "block_size": 64,
     "page_size": 4096,
     "heartbeat_frequency": 10000000,
-    "num_cores": 4,
+    "num_cores": 1,
     "ooo_cpu": [
         {
             "frequency": 4000,
@@ -67,7 +67,7 @@
         "prefetcher": "ip_stride"
     },
     "L2C": {
-        "sets": 2048,
+        "sets": 1024,
         "ways": 16,
         "rq_size": 32,
         "wq_size": 32,
@@ -150,8 +150,8 @@
     },
     "physical_memory": {
         "data_rate": 4800,
-        "channels": 2,
-        "ranks": 2,
+        "channels": 1,
+        "ranks": 1,
         "bankgroups": 8,
         "banks": 4,
         "bank_rows": 65536,

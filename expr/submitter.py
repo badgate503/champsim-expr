@@ -131,40 +131,43 @@ for t in task_set:
 
 
 for pp in args.prefetcher:
-    mode_is_mc = pp.endswith(".mc")
-    if mode_is_mc:
-        out_path = f"{LOG_PATH}/{pp.replace('.mc', '')}"
-    else:
-        out_path = f"{LOG_PATH}/{pp}"
-    if args.output is not None:
-        out_path = os.path.abspath(args.output+f"/{pp}")
-    print(f"\n{'='*60}\n")
-    print(f"> Executable: {CYAN}../bin/{pp}{END}")
-    print(f"> Warm-up: {CYAN}{WARM_UP}{END}, Interval: {CYAN}{INTERVAL}{END}")
-    
-    os.system(f"stat ../bin/{pp} | grep 最近更改")
-    if os.path.exists(f"../bin/champsim_config_{pp}.json"):
-        with open(f"../bin/champsim_config_{pp}.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-            print(f"> L2C Config: {CYAN}{data['L2C']}{END}")
-    else:
-        print(f"> L2C Config: (File not exist)")
-    print(f"> Traces: {YELLOW}{' '.join(task_map[pp])}{END}")
-    if mode_is_mc:
-        print(f"> Logs will be saved to {out_path}/ as {YELLOW}.log{END} (Champsim log) and {YELLOW}.txt{END} (Miss cause classification log) files")
-    else:
-        print(f"> Logs will be saved to {out_path}/ as {YELLOW}.log{END} (Champsim log) files")
-    
-    
-    if f"{pp}" not in os.listdir("../bin/"):
-        print(f"> {RED}Error: Executable {pp} not found in ../bin/. Please compile first with --compile flag.{END}")
-        sys.exit(1)
-print(f"> proceed?")
-
-input() 
+    if pp in task_map:
+        mode_is_mc = pp.endswith(".mc")
+        if mode_is_mc:
+            out_path = f"{LOG_PATH}/{pp.replace('.mc', '')}"
+        else:
+            out_path = f"{LOG_PATH}/{pp}"
+        if args.output is not None:
+            out_path = os.path.abspath(args.output+f"/{pp}")
+        print(f"\n{'='*60}\n")
+        print(f"> Executable: {CYAN}../bin/{pp}{END}")
+        print(f"> Warm-up: {CYAN}{WARM_UP}{END}, Interval: {CYAN}{INTERVAL}{END}")
+        
+        os.system(f"stat ../bin/{pp} | grep 最近更改")
+        if os.path.exists(f"../bin/champsim_config_{pp}.json"):
+            with open(f"../bin/champsim_config_{pp}.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+                print(f"> L2C Config: {CYAN}{data['L2C']}{END}")
+        else:
+            print(f"> L2C Config: (File not exist)")
+        print(f"> Traces: {YELLOW}{' '.join(task_map[pp])}{END}")
+        if mode_is_mc:
+            print(f"> Logs will be saved to {out_path}/ as {YELLOW}.log{END} (Champsim log) and {YELLOW}.txt{END} (Miss cause classification log) files")
+        else:
+            print(f"> Logs will be saved to {out_path}/ as {YELLOW}.log{END} (Champsim log) files")
+        
+        
+        if f"{pp}" not in os.listdir("../bin/"):
+            print(f"> {RED}Error: Executable {pp} not found in ../bin/. Please compile first with --compile flag.{END}")
+            sys.exit(1)
 
 task_lines = '\n'.join([f'{YELLOW}{p}{END}@{RED}{t}{END} > {BLUE}{log_path}/{p}/{t}.log{END}' for p, t, log_path in task_set])
-print(f"All tasks ({len(task_set)}):\n{task_lines}\nsubmitted")
+print(f"All tasks ({len(task_set)}):\n{task_lines}")
+print(f"> proceed?")
+input() 
+
+
+print(f"submitted")
 
 
 from multiprocessing.managers import BaseManager

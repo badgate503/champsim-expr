@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.11
 
 from utils.defs import *
+import argparse
 import re
 import os
 RED = '\033[91m'
@@ -14,23 +15,37 @@ BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 END = '\033[0m'
 TRACE_LIST = {}
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument("--output", "-o", default="./result", help="指定输出文件")
+parser.add_argument("--pflist", "-p", nargs="+", help="指定仿真预热长度（指令数）")
+parser.add_argument("--alias", "-a", nargs="+", help="指定预取器别名，顺序与预取器列表一致")
+parser.add_argument("--measure", "-m", nargs="+", help="指定仿真区间长度（指令数）")
+args = parser.parse_args()
+
 PF_LIST = [
-    "no",
-    "baseline.1way",
-    "baseline.2way",
-    "baseline.3way",
+    # "no",
+    # "baseline.1way",
+    # "baseline.2way",
+    # "baseline.3way",
     "baseline.4way",
-    "baseline.5way",
-    "baseline.6way",
-    "baseline.7way",
-    "baseline.8way",
+    # "baseline.5way",
+    # "baseline.6way",
+    # "baseline.7way",
+    # "baseline.8way",
     # "acc_stat",
     # "triangel",
     # "prophet",
     # "kairos",
     # "croage",
+    "prism_final",
     # "prism",
     # "prism33",
+    # "prism_l1",
+    # "prism_l2",
+    # "prism_l3",
+    # "prism_l4",
     # "prism_fixlevel",
     # "prism_rs",
     # "prism_runtimers",
@@ -39,7 +54,6 @@ PF_LIST = [
     # "prism_l2pf",
     # "prism_l3pf",
     # "prism_filte",
-    # "prism_final",
     # "prism_coverage_05",
     # "prism_coverage_15",
     # "prism_coverage_25",
@@ -58,6 +72,13 @@ PF_LIST = [
     # "prism_warminit1",
     # "prism_warminit2",
     # "prism_warminit8",
+
+    # "l1ipcp.triangel",
+    # "l1ipcp.prophet",
+    # "l1ipcp.prism",
+    # "l1berti.triangel",
+    # "l1berti.prophet",
+    # "l1berti.prism",
 
     # "pctpinf.a1",
     # "pctpinf.a2",
@@ -149,6 +170,15 @@ PF_LIST = [
     # "ltp4wayl4d6",
     # "ltp4wayl4d8",
 ]
+pf_alias_map = dict()
+if args.pflist is not None:
+    PF_LIST = args.pflist
+    if args.alias is not None:
+        pf_alias_map = {pf: alias for pf,alias in zip(PF_LIST, args.alias)}
+if args.output is not None:
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
+
 METRICS = [
     'IPC',
     'IPCI',
@@ -156,43 +186,43 @@ METRICS = [
     'L2C_Accuracy',
     'L2C_Overprediction',
     'L2C_Timeliness',
+    'L2C_PrefetchHit',
     # 'L2C_PFfill',
     # 'L2C_PFhit',
     # 'L2C_DemandHit',
     # 'L2C_UselessPF',
     # 'L2C_Demand_miss',
+    'L2C_Relative_Useful', # relative to baseline
     'L2C_UsefulPF',
     "LLC_DemandHit",
     'DRAM_Traffic',
-    'L1D_average_miss_latency',
-    'L2C_average_miss_latency',
-    'LLC_average_miss_latency',
-    'L1-MPKI',
-    'L2-MPKI',
+    # 'L1D_average_miss_latency',
+    # 'L2C_average_miss_latency',
+    # 'LLC_average_miss_latency',
+    # 'L1-MPKI',
+    # 'L2-MPKI',
     'MPKI',
     'PCM_useful_prefetches',
     'PCM_late_prefetches',
     'PCM_accuracy',
     'PCM_laterate',
+    'MT_inserts',
     'MT_lookups',
     'MT_hitrate',
     'MT_accuracy',
     'MT_accuratepf',
     'MT_acc_find_rate',
-    'CT_hitrate',
-    'CT_accuracy',
-    'CT_useful_prefetches',
+    # 'CT_hitrate',
+    # 'CT_accuracy',
+    # 'CT_useful_prefetches',
     'Unmod_PC',
     'Insert_PC',
-    # 'Lack_Tri',
-    # 'Lack_TriMiss',
     'Init_L3Hit_rate',
     'Init_UPF_rate',
-    'Init_NormUPF_rate',
     "L2C_PF_Issue",
     "L2C_PF_Fill",
 ]
-BASELINE = "baseline4w"
+BASELINE = "baseline.4way"
 def get_measure(path, baseline_result = None):
     with open(path, "r") as f:
         lines = f.readlines()
@@ -325,7 +355,18 @@ def get_measure(path, baseline_result = None):
                 counters['L2C_Coverage'] = f"{0.0}"
         else:
             counters['L2C_Coverage'] = f"{0.0}"
-            
+        
+        if baseline_result is not None:
+            if int(baseline_result['L2C_Relative_Useful']) > 0:
+                counters['L2C_Relative_Useful'] = f"{(data_l2pf['USEFUL'] / float(baseline_result['L2C_Relative_Useful']))}"
+        else:
+            counters['L2C_Relative_Useful'] = f"{(data_l2pf['USEFUL'])}"
+
+        if baseline_result is not None:
+            if int(baseline_result['L2C_PrefetchHit']) > 0:
+                counters['L2C_PrefetchHit'] = f"{(data_l2pf_access['HIT'] / data_l2pf['ISSUED']) if data_l2pf['ISSUED'] > 0 else 0.0}"
+        else:
+            counters['L2C_PrefetchHit'] = f"{(data_l2pf_access['HIT'])}"
         
         if (data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']) > 10:
             counters['L2C_Accuracy'] = f"{((data_l2pf['USEFUL'] + data_l2pf['LATE']) / (data_l2pf['USEFUL'] + data_l2pf['LATE'] + data_l2pf['USELESS']))}"
@@ -339,8 +380,6 @@ def get_measure(path, baseline_result = None):
             current_dram_traffic = rq_rbh + rq_rbm + wq_rbh + wq_rbm
             if baseline_dram_traffic > 0:
                 counters['DRAM_Traffic'] = str(1.0*current_dram_traffic / baseline_dram_traffic)
-            if current_dram_traffic < baseline_dram_traffic:
-                print(f"{path} : baseline fill: {baseline_result['L2C_PF_Fill']}, cur fill: {counters['L2C_PF_Fill']}. baseline issue: {baseline_result['L2C_PF_Issue']}, cur issue: {counters['L2C_PF_Issue']}")
         else:
             counters['DRAM_Traffic'] = str(rq_rbh + rq_rbm + wq_rbh + wq_rbm)
         #print(counters)
@@ -356,13 +395,21 @@ if __name__ == "__main__":
             if (line.split(":")[0] == "gap" or line.split(":")[0] == "ligra" or line.split(":")[0] == "ml" or line.split(":")[0] == "google" or line.split(":")[0] == "spec17"):
                 TRACE_LIST[line.split(":")[0]] =  sorted(line.split(":")[1].strip().split(" "))
 
-    with open(f"result/average.csv","w") as ff:
-        ff.write("Set,Prefetcher," + ",".join(METRICS) + "\n")
+    with open(f"{args.output}/average.csv","w") as ff:
+        if args.measure is not None:
+            met = [ m for m in METRICS if m in args.measure]
+        else:
+            met = METRICS
+        ff.write("Set,Prefetcher," + ",".join(met) + "\n")
         pass
     for set_name in TRACE_LIST.keys():
-        with open(f"result/average.csv","a") as ff:
-            with open(f"result/{set_name}.csv", "w") as f:
-                f.write("Trace,Prefetcher," + ",".join(METRICS) + "\n")
+        with open(f"{args.output}/average.csv","a") as ff:
+            with open(f"{args.output}/{set_name}.csv", "w") as f:
+                if args.measure is not None:
+                    met = [ m for m in METRICS if m in args.measure]
+                else:
+                    met = METRICS
+                f.write("Trace,Prefetcher," + ",".join(met) + "\n")
                 baseline_result = {}
                 average = {pf:[] for pf in PF_LIST}
                 for trace in TRACE_LIST[set_name]:
@@ -372,7 +419,10 @@ if __name__ == "__main__":
                         if os.path.exists(LOG_PATH +"/"+ pf + "/" + (trace+".log")):
                             #print("Reading from: " + LOG_PATH +"/"+ pf + "/" + (trace+".log"))
                             result = get_measure(LOG_PATH +"/"+ pf + "/" + (trace+".log"), baseline_result[trace])
-                            f.write(trace + "," + pf + "," + ",".join([result[m] for m in METRICS]) + "\n")
+                            if args.alias is not None:
+                                f.write(trace + "," + pf_alias_map[pf] + "," + ",".join([result[m] for m in met]) + "\n")
+                            else:
+                                f.write(trace + "," + pf + "," + ",".join([result[m] for m in met]) + "\n")
                             average[pf].append(list(result.values()))
                         else:
                             #print(f"{RED}Warning: Log file for trace {trace} with prefetcher {pf} not found.{END}")
@@ -402,14 +452,20 @@ if __name__ == "__main__":
                             else:
                                 average_line[pf][m] = "0.0000"
                 for pf in PF_LIST:
+                    if args.measure is not None:
+                        average_line[pf] = {m: average_line[pf][m] for m in args.measure}
                     result = average_line[pf].values()
-                    f.write("Average," + pf + "," + ",".join(result) + "\n")
-                    ff.write(f"{set_name}," + pf + "," + ",".join(result) + "\n")
+                    if args.alias is not None:
+                        f.write("Average," + pf_alias_map[pf] + "," + ",".join(result) + "\n")
+                        ff.write(f"{set_name}," + pf_alias_map[pf] + "," + ",".join(result) + "\n")
+                    else:
+                        f.write("Average," + pf + "," + ",".join(result) + "\n")
+                        ff.write(f"{set_name}," + pf + "," + ",".join(result) + "\n")
 
     import pandas as pd
     import numpy as np
 
-    df = pd.read_csv("result/average.csv")
+    df = pd.read_csv(f"{args.output}/average.csv")
 
     geo_cols = ["IPC", "IPCI"]
     measure_cols = [col for col in df.columns if col not in ["Set", "Prefetcher"]]
@@ -446,6 +502,6 @@ if __name__ == "__main__":
     # 拼接（原数据 + 平均行）
     out_df = pd.concat([df, avg_df], ignore_index=True)
 
-    out_df.to_csv("result/average.csv", index=False)
+    out_df.to_csv(f"{args.output}/average.csv", index=False)
 
     print(out_df)

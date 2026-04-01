@@ -132,6 +132,7 @@ if __name__ == "__main__":
                     # 使用从 manager 获取的 shared_queue
                     task = shared_queue.get_nowait()
                     p, w, log, ncore = task["prefetcher"], task["trace"], task["path"], task["numcore"]
+                    
                     if ncore == 1:
                         future = executor.submit(launch_task, p, [w], log)
                         print(f"新增: {YELLOW}{p}{END}@{RED}{w}{END}, 队列中任务数: {total_n}，已加载: {len(running)}")
@@ -145,6 +146,7 @@ if __name__ == "__main__":
                                     candidates= parts[1:]         
                         future = executor.submit(launch_task, p, candidates, log, alias=f"{w}")
                         print(f"新增: {YELLOW}{p}{END}@{RED}{ncore}core-{w}{END}, 队列中任务数: {total_n}，已加载: {len(running)}")
+                
                     running.append(future)
                     
                     total_n += 1

@@ -3,6 +3,9 @@
 uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
                                                     uint32_t metadata_in)
 {
+  if (!warmup_reset && !llc_cache->warmup) {
+    reset_stat_counter();
+  }
   std::vector<uint64_t> prefetch_addresses;
   second_chance_timestamp++;
   global_timestamp++;

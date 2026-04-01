@@ -13,8 +13,8 @@
 
 #define MAX_DEGREE 4
 
-#define CACHE_INDEX_BITS 12
-#define CACHE_SETMASK ((1 << 12) - 1)
+#define CACHE_INDEX_BITS __builtin_ctz(N_LLC_SET)
+#define CACHE_SETMASK (N_LLC_SET - 1)
 #define CACHE_ASSOC 16
 
 #define TRNGL_TU_INDEX_BITS 5
@@ -33,8 +33,8 @@
 #define TRNGL_RB_SETMASK ((1 << 7) - 1)
 #define TRNGL_RB_ASSOC 2
 
-#define TRNGL_MD_INDEX_BITS 12
-#define TRNGL_MD_SETMASK ((1 << 12) - 1)
+#define TRNGL_MD_INDEX_BITS __builtin_ctz(N_LLC_SET)
+#define TRNGL_MD_SETMASK (N_LLC_SET - 1)
 #define TRNGL_MD_ASSOC 96
 
 #define TRNGL_SD_INDEX_BITS 6
@@ -894,6 +894,16 @@ public: // All members shall be basic variables, pointers, or implement proper c
   uint64_t MT_lookup_returns = 0;
   uint64_t MT_inserts = 0;
 
+  bool warmup_reset = false;
+  void reset_stat_counter(){
+    MT_lookups = 0;
+    MT_hits = 0;
+    MT_inserts = 0;
+    MT_lookup_reqs = 0;
+    MT_lookup_returns = 0;
+    warmup_reset = true;
+  }
+
   AssociativeCache<TrainingUnitEntry>* TU = new AssociativeCache<TrainingUnitEntry>(1 << TRNGL_TU_INDEX_BITS, TRNGL_TU_ASSOC, LRU, "TU");
   AssociativeCache<HistorySamplerEntry>* HS = new AssociativeCache<HistorySamplerEntry>(1 << TRNGL_HS_INDEX_BITS, TRNGL_HS_ASSOC, LRU, "HS");
   AssociativeCache<SecondChanceSamplerEntry>* SC = new AssociativeCache<SecondChanceSamplerEntry>(1 << TRNGL_SC_INDEX_BITS, TRNGL_SC_ASSOC, FIFO, "SC");
@@ -927,6 +937,7 @@ public: // All members shall be basic variables, pointers, or implement proper c
     // initialize partition
     llc_cache->set_available_ways(16 - current_partition);
     MD->repartition(current_partition);
+    std::cout << "CACHE_INDEX_BITS: " << CACHE_INDEX_BITS << ", CACHE_SETMASK: " << std::hex << CACHE_SETMASK << std::dec << std::endl;
   }
 
   MetadataEntry* GetMetadata(uint64_t addr, bool use_rb)
