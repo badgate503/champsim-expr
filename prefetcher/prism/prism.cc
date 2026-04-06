@@ -197,7 +197,7 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
 #ifdef PC_TRIGGER_PREFETCHING
       update_pc_metatable_size();
 #endif
-#ifdef METADATA_RESIZE
+#ifdef BMP_RESIZE
       update_main_metatable_size();
 #endif
       resize_cache();

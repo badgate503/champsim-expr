@@ -29,18 +29,18 @@ PF_LIST = [
     # "baseline.1way",
     # "baseline.2way",
     # "baseline.3way",
-    "baseline.4way",
+    # "baseline.4way",
     # "baseline.5way",
     # "baseline.6way",
     # "baseline.7way",
     # "baseline.8way",
     # "acc_stat",
-    # "triangel",
-    # "prophet",
+    "triangel",
+    "prophet",
     # "kairos",
     # "croage",
-    "prism_final",
-    # "prism",
+    "prism",
+    # "prism_final",
     # "prism33",
     # "prism_l1",
     # "prism_l2",
@@ -192,6 +192,7 @@ METRICS = [
     # 'L2C_DemandHit',
     # 'L2C_UselessPF',
     # 'L2C_Demand_miss',
+    'L2C_USEFUL',
     'L2C_Relative_Useful', # relative to baseline
     'L2C_UsefulPF',
     "LLC_DemandHit",
@@ -206,11 +207,14 @@ METRICS = [
     'PCM_late_prefetches',
     'PCM_accuracy',
     'PCM_laterate',
+    'PCM_useful_coverage',
     'MT_inserts',
     'MT_lookups',
+    'MT_hits',
     'MT_hitrate',
     'MT_accuracy',
     'MT_accuratepf',
+    'LLC_Traffic',
     'MT_acc_find_rate',
     # 'CT_hitrate',
     # 'CT_accuracy',
@@ -222,8 +226,11 @@ METRICS = [
     "L2C_PF_Issue",
     "L2C_PF_Fill",
 ]
-BASELINE = "baseline.4way"
+BASELINE = "no"
 def get_measure(path, baseline_result = None):
+    if not os.path.exists(path):
+        print(f"{RED}Error: Log file {path} not found.{END}")
+        return {m:"0" for m in METRICS}
     with open(path, "r") as f:
         lines = f.readlines()
         counters = {m:"0" for m in METRICS}
@@ -298,6 +305,7 @@ def get_measure(path, baseline_result = None):
             if line.startswith("cpu0->cpu0_L2C RFO"):
                 pairs = re.findall(r'(\w+):\s+(\d+)', line)
                 rfo_l2c = {k: int(v) for k, v in pairs}
+            
 
             if line.startswith("cpu0->LLC TOTAL"):
                 pairs = re.findall(r'(\w+):\s+(\d+)', line)
@@ -310,6 +318,10 @@ def get_measure(path, baseline_result = None):
             if line.startswith("cpu0->LLC RFO"):
                 pairs = re.findall(r'(\w+):\s+(\d+)', line)
                 rfo_llc = {k: int(v) for k, v in pairs}
+
+            if line.startswith("cpu0->LLC TRANSLATION"):
+                pairs = re.findall(r'(\w+):\s+(\d+)', line)
+                trans_llc = {k: int(v) for k, v in pairs}
 
             if line.startswith("cpu0->LLC PREFETCH REQUESTED"):
                 pairs = re.findall(r'(\w+):\s+(\d+)', line)
@@ -342,10 +354,17 @@ def get_measure(path, baseline_result = None):
         counters['L2C_UsefulPF'] = f"{data_l2pf['USEFUL'] / (data_l2pf['ISSUED']) if data_l2pf['ISSUED'] > 0 else 0.0} "
         # counters['L2C_UselessPF'] = f"{data_l2pf['USELESS'] / (data_l2pf['ISSUED']) if data_l2pf['ISSUED'] > 0 else 0.0} "
         counters['LLC_DemandHit'] = f"{load_llc['HIT'] / load_llc['ACCESS']}"
-
+        counters['L2C_USEFUL'] = f"{data_l2pf['USEFUL']}"
         if (int(counters['MT_lookups']) > 0):
             counters['MT_acc_find_rate'] = f"{float(counters['MT_accuratepf']) / float(counters['MT_lookups'])}"
 
+        if baseline_result is not None:
+            counters['MT_inserts'] = f"{int(counters['MT_inserts']) / int(baseline_result['LLC_Traffic']) if int(baseline_result['LLC_Traffic']) > 0 else 0.0}"
+            counters['MT_lookups'] = f"{int(counters['MT_lookups']) / int(baseline_result['LLC_Traffic']) if int(baseline_result['LLC_Traffic']) > 0 else 0.0}"
+            counters['MT_hits'] = f"{int(counters['MT_hits']) / int(baseline_result['LLC_Traffic']) if int(baseline_result['LLC_Traffic']) > 0 else 0.0}"
+            counters['L2C_USEFUL'] = f"{int(counters['L2C_USEFUL']) / int(baseline_result['LLC_Traffic']) if int(baseline_result['LLC_Traffic']) > 0 else 0.0}"
+        else:
+            counters['LLC_Traffic'] = f"{int(total_llc['ACCESS']) - int(trans_llc['ACCESS']) + int(counters['MT_lookups']) + int(counters['MT_inserts'])}"
         if baseline_result is not None:
             if baseline_result['L2C_Demand_miss'] > 0:
                 counters['L2C_Coverage'] = f"{(baseline_result['L2C_Demand_miss'] - (load_l2c['MISS'] + rfo_l2c['MISS'])) / baseline_result['L2C_Demand_miss']}"
@@ -355,6 +374,12 @@ def get_measure(path, baseline_result = None):
                 counters['L2C_Coverage'] = f"{0.0}"
         else:
             counters['L2C_Coverage'] = f"{0.0}"
+
+        # if baseline_result is not None:
+        #     if int(baseline_result['PCM_useful_prefetches']) > 0:
+        #         counters['PCM_useful_coverage'] = f"{(int(counters['PCM_useful_prefetches']) / int(baseline_result['PCM_useful_prefetches'])) if int(baseline_result['PCM_useful_prefetches']) > 0 else 0.0}"
+        # else:
+        #     counters['PCM_useful_coverage'] = counters['PCM_useful_prefetches']
         
         if baseline_result is not None:
             if int(baseline_result['L2C_Relative_Useful']) > 0:
@@ -397,7 +422,7 @@ if __name__ == "__main__":
 
     with open(f"{args.output}/average.csv","w") as ff:
         if args.measure is not None:
-            met = [ m for m in METRICS if m in args.measure]
+            met = args.measure
         else:
             met = METRICS
         ff.write("Set,Prefetcher," + ",".join(met) + "\n")
@@ -406,7 +431,7 @@ if __name__ == "__main__":
         with open(f"{args.output}/average.csv","a") as ff:
             with open(f"{args.output}/{set_name}.csv", "w") as f:
                 if args.measure is not None:
-                    met = [ m for m in METRICS if m in args.measure]
+                    met = args.measure
                 else:
                     met = METRICS
                 f.write("Trace,Prefetcher," + ",".join(met) + "\n")
@@ -434,8 +459,11 @@ if __name__ == "__main__":
                             total = 1.0
                             count = 0
                             for res in average[pf]:
-                                total *= float(res[METRICS.index(m)])
-                                count += 1
+                                try:
+                                    total *= float(res[METRICS.index(m)])
+                                    count += 1
+                                except:
+                                    print("Bad format:", res[METRICS.index(m)])
                             if count > 0:
                                 average_line[pf][m] = f"{(pow(total, 1.0/count)):.4f}"
                             else:
@@ -445,22 +473,28 @@ if __name__ == "__main__":
                             total = 0.0
                             count = 0
                             for res in average[pf]:
-                                total += float(res[METRICS.index(m)])
-                                count += 1
+                                try:
+                                    total += float(res[METRICS.index(m)])
+                                    count += 1
+                                except:
+                                    print("Bad format:", res[METRICS.index(m)])
+                                
                             if count > 0:
                                 average_line[pf][m] = f"{(total / count):.4f}"
                             else:
                                 average_line[pf][m] = "0.0000"
                 for pf in PF_LIST:
                     if args.measure is not None:
-                        average_line[pf] = {m: average_line[pf][m] for m in args.measure}
-                    result = average_line[pf].values()
-                    if args.alias is not None:
-                        f.write("Average," + pf_alias_map[pf] + "," + ",".join(result) + "\n")
-                        ff.write(f"{set_name}," + pf_alias_map[pf] + "," + ",".join(result) + "\n")
+                        line_l = [average_line[pf][m] for m in args.measure]
                     else:
-                        f.write("Average," + pf + "," + ",".join(result) + "\n")
-                        ff.write(f"{set_name}," + pf + "," + ",".join(result) + "\n")
+                        line_l = average_line[pf].values()
+                    
+                    if args.alias is not None:
+                        f.write("Average," + pf_alias_map[pf] + "," + ",".join(line_l) + "\n")
+                        ff.write(f"{set_name}," + pf_alias_map[pf] + "," + ",".join(line_l) + "\n")
+                    else:
+                        f.write("Average," + pf + "," + ",".join(line_l) + "\n")
+                        ff.write(f"{set_name}," + pf + "," + ",".join(line_l) + "\n")
 
     import pandas as pd
     import numpy as np

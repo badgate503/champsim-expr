@@ -142,8 +142,8 @@ if __name__ == "__main__":
                             candidates = []
                             for line in lines:
                                 parts = line.strip().split(",")
-                                if parts[0].startswith(f"{w}"):
-                                    candidates= parts[1:]         
+                                if parts[0] == w:
+                                    candidates = parts[1:]         
                         future = executor.submit(launch_task, p, candidates, log, alias=f"{w}")
                         print(f"新增: {YELLOW}{p}{END}@{RED}{ncore}core-{w}{END}, 队列中任务数: {total_n}，已加载: {len(running)}")
                 

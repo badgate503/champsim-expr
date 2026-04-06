@@ -1,0 +1,1 @@
+./submitter.py -p prism-none prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-pol prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-pol -l gap ligra ml spec17 google

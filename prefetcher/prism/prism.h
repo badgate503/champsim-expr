@@ -22,7 +22,7 @@
 #define PC_META_TABLE_SIZE (N_LLC_SET * 1 * 12)
 #define PC_META_TABLE_ASSOC 12
 
-#define METADATA_RESIZE
+#define BMP_RESIZE
 #define RESIZE_SAMPLE_WINDOW 100000
 #define SAMPLE_INTERVAL 10000000
 
@@ -46,7 +46,11 @@
 #define PC_TABLE_ASSOC 16
 #define PC_TABLE_TAG_WIDTH 12
 
+#ifdef BMP_RESIZE
 #define INIT_WAY_MARKOV 8
+#else
+#define INIT_WAY_MARKOV 4
+#endif
 #define MIN_WAY_MARKOV 1
 #define MAX_WAY_MARKOV 8
 #define META_TABLE_SIZE (N_LLC_SET * 12 * INIT_WAY_MARKOV)
@@ -164,7 +168,7 @@ public:
   int waysForCache = 16 - INIT_WAY_MARKOV;
   int waysForMarkov = INIT_WAY_MARKOV;
   int origin_waysForMarkov = INIT_WAY_MARKOV;
-  bool large_markov = (INIT_WAY_MARKOV == 8) ? 1 : 0;
+  bool large_markov = (INIT_WAY_MARKOV == MAX_WAY_MARKOV) ? 1 : 0;
   int waysForPCTable = 0;
   int origin_waysForPCTable = 0;
 
