@@ -1,0 +1,1 @@
+./submitter.py -p prism.8core 

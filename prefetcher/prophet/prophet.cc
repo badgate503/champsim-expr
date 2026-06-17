@@ -13,7 +13,8 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
 
   uint64_t block_addr = addr >> LOG2_BLOCK_SIZE;
 
-  if (trainTable.find(ip) == trainTable.end()) {
+  if (trainTable.find(ip) == trainTable.end()) { 
+
     if (trainTable.size() < 128) {
       trainTable[ip] = TrainEntry();
     } else {
@@ -31,6 +32,8 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
       }
     }
   } else {
+    /* Energy */
+    tu_read_n++;
     if (cache_hit && prefetched_addr.find(block_addr) != prefetched_addr.end()) {
       trainTable[prefetched_addr[block_addr]].solved += 1;
       prefetched_addr.erase(block_addr);
@@ -44,14 +47,25 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
 
   // 1.search
   ProphetMetaTableEntry* metadata = metaTable->find(block_addr);
+  /* Energy */
+  md_read_n++;
   ProphetMRBTableEntry* reuseData = mrbTable->find(block_addr);
+  /* Energy */
+  rb_read_n++;
 
   uint64_t lastAddr = 0;
   auto pc_entry = pcTable->find(ip);
+  /* Energy */
+  tu_read_n++;
   if (pc_entry) {
+    /* Energy */
+    tu_write_n++;
     lastAddr = pc_entry->data;
+    
   } else {
     pcTable->insert(ip, 0);
+    /* Energy */
+    tu_write_n++;
     pc_entry = pcTable->find(ip);
   }
   pcTable->set_mru(ip);
@@ -59,8 +73,11 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
   if (lastAddr == block_addr)
     return;
   if (reuseData) {
-    if (reuseData->counter < MRB_MAX_COUNTER)
+    if (reuseData->counter < MRB_MAX_COUNTER) {
       reuseData->counter++;
+      /* Energy */
+      rb_write_n++;
+    }
     mrbTable->set_mru(block_addr);
   }
   if (metadata) {
@@ -72,6 +89,8 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
     }
     if (!metadata->used) {
       metadata->used = true;
+      /* Energy */
+      md_write_n++;
       // trainTable[metadata->pc].meta_used++;
     }
   }
@@ -93,6 +112,8 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
 
   if (lastAddr != 0) {
     ProphetMetaTableEntry* lastMeta = metaTable->find(lastAddr);
+    /* Energy */
+    md_read_n++;
     if (lastMeta) {
       bool matched = false;
       if (lastMeta->correlatedAddr == block_addr) {
@@ -102,14 +123,21 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
         uint64_t victimAddr = lastMeta->correlatedAddr;
         ProphetMetaTableEntry temp_entry(block_addr);
         metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
+        /* Energy */
+        md_write_n++;
         MT_inserts++;
 
         // victim buffer logic
         if (profileReplTable[ip] > 1) {
           ProphetMRBTableEntry* victimMeta = mrbTable->find(lastAddr);
+          /* Energy */
+          rb_read_n++;
+          /* Energy */
+          rb_write_n++;
           if (!victimMeta) {
             ProphetMRBTableEntry temp_entry(victimAddr);
             mrbTable->insert(lastAddr, temp_entry);
+            
           } else {
             if (victimMeta->correlatedAddr == victimAddr) {
               if (victimMeta->counter < MRB_MAX_COUNTER) {
@@ -127,10 +155,14 @@ void prophet::invoke_prefetcher(uint64_t ip, uint64_t addr, uint8_t cache_hit, u
       if (!inTraining && enablePGLRU) {
         if (profileReplTable.find(ip) != profileReplTable.end()){
           metaTable->insert(lastAddr, temp_entry, profileReplTable[ip]);
+          /* Energy */
+          md_write_n++;
           MT_inserts++;
         }
       } else {
         MT_inserts++;
+        /* Energy */
+        rb_write_n++;
         if (!metaTable->insert(lastAddr, temp_entry, 1)) // lyq: when profiling，prio = 1 ？
         {
           numEntriesinTable++;
@@ -151,6 +183,8 @@ int prophet::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint6
   bool find_success = false;
   for (int i = 0; i < globalDegree; i++) {
     ProphetMetaTableEntry* candidate = metaTable->find(lookup);
+    /* Energy */
+    md_read_n++;
     MT_lookups++;
     if (candidate == nullptr)
       break;
@@ -180,6 +214,8 @@ int prophet::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
     ProphetMRBTableEntry* candidate = mrbTable->find(lookup);
+    /* Energy */
+    rb_read_n++;
     if (candidate == nullptr)
       break;
     addToUsedPool(lookup);
@@ -302,6 +338,14 @@ void prophet::prefetcher_final_stats()
     }
     hint_file.close();
   }
+
+  cout << "multipath_victim_buffer_read " << rb_read_n << endl;
+  cout << "multipath_victim_buffer_write " << rb_write_n << endl;
+  cout << (16 - waysForCache) << "_way_markov_table_read " << md_read_n << endl;
+  cout << (16 - waysForCache) << "_way_markov_table_write " << md_write_n << endl;
+  cout << "training_unit_read " << tu_read_n << endl;
+  cout << "training_unit_write " << tu_write_n << endl;
+
 }
 
 void prophet::prefetcher_cycle_operate() {}

@@ -148,4 +148,4 @@ def api_data():
 
 if __name__ == '__main__':
     # Run on port 8000
-    app.run(host='0.0.0.0', port=8003, debug=True)
+    app.run(host='0.0.0.0', port=8003, debug=False)

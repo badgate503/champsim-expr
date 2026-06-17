@@ -305,7 +305,7 @@ public:
     size_t second_last_dot = file_part.rfind('.', last_dot - 1);
     std::string base_name = (second_last_dot == std::string::npos) ? file_part.substr(0, last_dot) : file_part.substr(0, second_last_dot);
 
-    // std::string profile_path = "/mnt/data/lyq/Kairos/expr/hint/"+ base_name + ".txt";
+    // std::string profile_path = "/mnt/data/lyq/PRISM/expr/hint/"+ base_name + ".txt";
     return base_name;
   }
   void set_llc_reference(CACHE* llc)

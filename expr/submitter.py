@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.8
 
 
 import os
@@ -100,17 +100,18 @@ else:
     task_set = {(p,t,log_path) for p in args.prefetcher for t in trace_mix_set}
 
     for pp in args.prefetcher:
+        print(pp)
         if pp.endswith(".mc"):
             pp_basename = pp[:-3]
         else:
             pp_basename = pp    
-        if os.path.isdir(log_path + "/" + pp_basename):
-            for fname in os.listdir(log_path + "/" + pp_basename):
+        if os.path.isdir(log_path+f"/core{args.ncore}" + "/" + pp_basename):
+            for fname in os.listdir(log_path+f"/core{args.ncore}" + "/" + pp_basename):
                 if fname.endswith(".log"):
                     trace_name = fname[:-4]  # 去掉 .log
                     if trace_name in trace_mix_set:
                         
-                        with open(log_path + "/" + pp_basename + "/" + fname, "r") as f:
+                        with open(log_path+f"/core{args.ncore}" + "/" + pp_basename + "/" + fname, "r") as f:
                             if "ChampSim completed all CPUs" in f.read():
                                 if args.skip:
                                     task_set.remove((pp, trace_name, log_path))

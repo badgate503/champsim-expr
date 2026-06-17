@@ -18,6 +18,8 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
 
   /* 1. 访问 Training Unit */
   TrainingUnitEntry* TU_entry = TU->get(pc);
+  /* Energy */
+  TU->read_n++;
 
   bool should_pf = false;
   bool should_sample = false;
@@ -28,6 +30,8 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
 
   /* Step1. Access Train Unit (TU) */
   if (TU_entry) {
+    /* Energy */
+    TU->write_n++;
     found_correlated_addr = true;
     last_addr = TU_entry->last_addr0;
     
@@ -59,18 +63,30 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
       if (global_pattern_conf1 > 96)
         TU_new.currently_twodist_pf = true;
       TU->set(pc, TU_new);
+      /* Energy */
+      TU->write_n++;
     }
   }
 
   /* Step2. Access Second Chance Sampler (SCS) if we found correlated addr in Step1 */
   if (found_correlated_addr) {
     SecondChanceSamplerEntry* SC_entry = SC->find(line_addr); /* 在 Second Chance Sampler 中查找当前地址对应的 Entry */
-
+    /* Energy */
+    SC->read_n++;
     /* If found SCS Entry and it is never used */
     if (SC_entry && !SC_entry->used) {
+      /* Energy */
+      SC->write_n++;
       SC_entry->used = true;
       /* Found the TU Entry corresponding to this SCS Entry */
       TrainingUnitEntry* TU_entry = TU->find(SC_entry->train_pc);
+      /* Energy */
+      TU->read_n++;
+      if(TU_entry) {
+        /* Energy */
+        TU->write_n++;
+      }
+     
       if (TU_entry && SC_entry->timestamp + 512 > second_chance_timestamp) {
         if (SC_entry->train_pc == pc) {
           TU_entry->pattern_conf0.increment();
@@ -88,8 +104,11 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
 
     /* Step3. Check History Sampler for the corresponding TU Entry */
     HistorySamplerEntry* HS_entry = HS->find(TU_entry->last_addr0);
-
+    /* Energy */
+    HS->read_n++;
     if (HS_entry && HS_entry->tu_entry_key == TU_entry->key) {
+      /* Energy */
+      HS->write_n++;
       /* 若 T.timestamp 和 A.timestamp 相差小于一个时间窗口，则认为 CurPC 处指令访存重复特征显著，增大 T.reuseConf 和全局 reuseConf ，反之，减少局部和全局的
        * reuseConf */
       int64_t time_distance = TU_entry->local_timestamp - HS_entry->timestamp;
@@ -117,12 +136,18 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
       else if(cache_pf_map.find(HS_entry->target_addr) != cache_pf_map.end() && !cache_pf_map[HS_entry->target_addr]) {
         /* 若 A.Target != Addr 且 Second Chance Sampler 中没有 A.Target ，则将 A.Target 插入 Second Chance Sampler 以等待 Second Chance Pattern */
         SecondChanceSamplerEntry* SC_entry = SC->get_victim(HS_entry->target_addr);
+        /* Energy */
+        SC->read_n++;
         if (SC_entry && !SC_entry->used) {
           /* 如果被驱逐时还未被使用过，则说明过了很久还没有出现希望看到的 Second Chance Pattern，此时认为 V.Train-Idx 处指令访存模式特征不显著，不对
              称的降低全局的和局部的 PatternConf 计数器
           */
           TrainingUnitEntry* TU_entry = TU->find(SC_entry->train_pc);
+          /* Energy */
+          TU->read_n++;
           if (TU_entry) {
+            /* Energy */            
+            TU->write_n++;
             TU_entry->pattern_conf0.decrement(2);
             TU_entry->pattern_conf1.decrement(5);
             global_pattern_conf0.decrement(2);
@@ -131,6 +156,8 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
         }
         auto new_SC_entry = SecondChanceSamplerEntry(HS_entry->target_addr, pc, second_chance_timestamp); // used default to false
         SC->set(HS_entry->target_addr, new_SC_entry);
+        /* Energy */
+        SC->write_n++;
       }
 
       /* 使用地址对 (PrevAddr, Addr) 更新 History Sampler 的采样 A ： A.Target = Addr */
@@ -142,9 +169,14 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
     else if (should_sample || RandomChance(TU_entry->reuse_conf.value, TU_entry->sample_rate.value)) {
       /* 若未找到有效采样或采样来自另一个 PC 的地址流，则以随机概率 采样 CurPC 的地址对 (PrevAddr, Addr) */
       auto HS_entry = HS->get_victim(TU_entry->last_addr0);
+      /* Energy */
+      HS->read_n++;
       if (HS_entry) {
         auto TU_entry_from_hs = TU->find(HS_entry->tu_entry_key);
+        /* Energy */
+        TU->read_n++;
         if (TU_entry_from_hs) {
+
           uint64_t distance = TU_entry_from_hs->local_timestamp - HS_entry->timestamp; // ! UAF
           /* 若 V 的时间戳和 V 采样的 PC 对应的 Training Unit 表项的时间戳相差大于一个时间窗口，则说
              明采样过于陈旧，因此增大 CurPC 的采样率： */
@@ -153,7 +185,10 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
             /* 若在此基础上 !V.Accessed ， 说明采样 V 过于陈旧且长时间没被使用；意味着
                V.Train-Idx 的地址流长时间不会出现采样 V 记录的地址，因此降低 V.Train-Idx 的 reuseConf */
             if (!HS_entry->reused) {
+
               TU_entry_from_hs->reuse_conf.decrement();
+              /* Energy */
+              TU->write_n++;
               global_reuse_conf.decrement();
             }
             TU_entry->sample_rate.increment();
@@ -172,6 +207,8 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
 
       auto HS_new = HistorySamplerEntry(TU_entry->last_addr0, TU_entry->key, line_addr, TU_entry->local_timestamp + 1);
       HS->set(TU_entry->last_addr0, HS_new);
+      /* Energy */
+      HS->write_n++;
     }
   }
 
@@ -277,6 +314,17 @@ void triangel::prefetcher_final_stats() {
   cout << "MT_lookup_reqs " << MT_lookup_reqs << endl;
   cout << "MT_lookup_returns " << MT_lookup_returns << endl;
   cout << "MT_inserts " << MT_inserts << endl;
+
+  cout << "history_sampler_read " << HS->read_n << endl;
+  cout << "history_sampler_write " << HS->write_n << endl;
+  cout << "second_chance_sampler_read " << SC->read_n << endl;
+  cout << "second_chance_sampler_write " << SC->write_n << endl;
+  cout << "training_unit_read " << TU->read_n << endl;
+  cout << "training_unit_write " << TU->write_n << endl;
+  cout << "reuse_buffer_read " << RB->read_n << endl;
+  cout << "reuse_buffer_write " << RB->write_n << endl;
+  cout << "markov_table_read " << MD->read_n << endl;
+  cout << "markov_table_write " << MD->write_n << endl;
 }
 
 void triangel::prefetcher_cycle_operate() {}

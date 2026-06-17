@@ -5,16 +5,18 @@ int prism::issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree)
   int cur = 0;
   uint64_t lookup = block_addr;
   auto pc_entry = pcTable->find(pc);
-  pf_filter_entry *last_filter_entry = nullptr, *cur_filter_entry = nullptr;
 
 #ifdef PREFETCH_FILTER
   auto filter_entry = pf_filter->find(lookup);
-  if (filter_entry && filter_entry->next) {
-    filter_entry = filter_entry->next;
-    while (filter_entry) {
+  energy_stats.filter_table_read++;
+  while (filter_entry){
+    lookup = filter_entry->next_addr;
+    cur++;
+
 #ifdef MULTI_LEVEL_PREFETCH
       if (!filter_entry->fill_l2 && cur < 3) {
-        bool success = prefetch_line({filter_entry->pf_addr << LOG2_BLOCK_SIZE}, true, 0);
+        bool success = prefetch_line({filter_entry->next_addr << LOG2_BLOCK_SIZE}, true, 0);
+        filter_entry->fill_l2 = true;
         if (success) {
           pc_entry->data.issuedPrefetchCount++;
           if (!llc_cache->warmup) {
@@ -23,25 +25,26 @@ int prism::issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree)
         }
       }
 #endif
-      lookup = filter_entry->pf_addr;
-      last_filter_entry = filter_entry;
-      filter_entry = filter_entry->next;
-      cur++;
-      if (cur > degree) {
-        return 0;
-      }
+
+    if (cur >= degree) {
+      return 0;
     }
+    filter_entry = pf_filter->find(lookup);
+    energy_stats.filter_table_read++;
   }
 #endif
+  pat_lookup_times[cur + 1]++;
 
   int i;
   for (i = cur; i < degree; i++) {
     auto entry = mainMetaTable->find(lookup);
     MT_lookups++;
+    energy_stats.markov_read[waysForMarkov == 1 ? 0 : 1]++;
     if (entry == nullptr)
       break;
     MT_hits++;
     bool success;
+
 #ifdef MULTI_LEVEL_PREFETCH
     if (i < 3) {
       success = prefetch_line({entry->target_addr << LOG2_BLOCK_SIZE}, true, 0);
@@ -50,14 +53,16 @@ int prism::issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree)
         if (!llc_cache->warmup) {
           resize_issued_prefetch++;
         }
-        cur_filter_entry = pf_filter->insert(entry->target_addr, true);
+        pf_filter->insert(lookup, entry->target_addr, true);
+        energy_stats.filter_table_write++;
       } else {
         return i;
       }
     } else {
       success = llc_cache->prefetch_line({entry->target_addr << LOG2_BLOCK_SIZE}, true, 0);
       if (success) {
-        cur_filter_entry = pf_filter->insert(entry->target_addr, false);
+        pf_filter->insert(lookup, entry->target_addr, false);
+        energy_stats.filter_table_write++;
       } else {
         return i;
       }
@@ -69,20 +74,18 @@ int prism::issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree)
       if (!llc_cache->warmup) {
         resize_issued_prefetch++;
       }
-      cur_filter_entry = pf_filter->insert(entry->target_addr, true);
+      pf_filter->insert(lookup, entry->target_addr, true);
+      energy_stats.filter_table_write++;
     } else {
       return i;
     }
 #endif
-    if (last_filter_entry) {
-      last_filter_entry->next = cur_filter_entry;
-    }
-    last_filter_entry = cur_filter_entry;
+
     lookup = entry->target_addr;
 
     // stat
     if (success) {
-      if (main_table_prefetches.find(entry->target_addr) != main_table_prefetches.end()) {
+      if (main_table_prefetches.find(entry->target_addr) == main_table_prefetches.end()) {
         main_table_issued_prefetches++;
         main_table_prefetches.insert(entry->target_addr);
       }
@@ -228,9 +231,11 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
 #endif
 
   auto pc_entry = pcTable->find(pc);
+  energy_stats.training_table_read++;
   bool train_pc_meta_table = false;
   if (pc_entry) {
     // update pc entry
+    energy_stats.training_table_write++;
     pcTable->set_mru(pc);
     if (cache_hit && !useful_prefetch) {
       pc_entry->data.hitCount++;
@@ -272,7 +277,7 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
 
 #ifdef DYNAMIC_DEGREE
       int cur_degree = pc_entry->data.degree;
-      int8_t cur_bw = get_dram_bw();
+      // cout << static_cast<int>(cur_bw) << endl;
       if (cur_degree <= 0) {
         if (discard_prefetch == 0) {
           cur_degree = 1;
@@ -282,13 +287,14 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
           discard_prefetch = 0;
       }
 
-      if (cur_bw >= 14) {
-        cur_degree = 0;
-      } else if (cur_bw >= 12) {
-        cur_degree -= 2;
-      } else if (cur_bw >= 8) {
-        cur_degree -= 1;
-      }
+      // int8_t cur_bw = get_dram_bw();
+      // if (cur_bw >= T_BW_OFF) {
+      //   cur_degree = 0;
+      // } else if (cur_bw >= T_BW_HIGH) {
+      //   cur_degree -= 2;
+      // } else if (cur_bw >= T_BW_MID) {
+      //   cur_degree -= 1;
+      // }
 #else
       int cur_degree = DEFAULT_DEGREE;
 #endif
@@ -327,7 +333,9 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
 #ifdef INSERTION_POLICY
               if (pc_entry->data.hitCount < 7)
 #endif
+              {
                 mainMetaTable->insert(trigger_addr, pc, {block_addr});
+              }
 #else
               uint64_t addr_before_trigger = 0;
               if (pc_entry->data.addrHistory.size() > pc_entry->data.lookahead + 1)
@@ -353,7 +361,10 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
 #ifdef INSERTION_POLICY
             if (pc_entry->data.hitCount < 7)
 #endif
+            {  
               mainMetaTable->insert(trigger_addr, pc, {block_addr});
+
+            }
           }
         } else if (pc_entry->data.degree == 0) {
           ++discard_metadata;
@@ -396,6 +407,7 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
         uint64_t pc_meta_table_key = hash_xor(triggerIP);
         auto victim_pc_meta_entry = pcMetaTable->insert(pc_meta_table_key, {block_addr});
         PCT_inserts++;
+        energy_stats.pat_write[waysForPCTable == 1 ? 0 : 1]++;
         if (!victim_pc_meta_entry.valid || victim_pc_meta_entry.key != pc_meta_table_key)
           pcMetaTable->set_default(pc_meta_table_key);
         else
@@ -426,6 +438,7 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
       uint64_t lookupPC = hash_xor(pc);
       auto pc_meta_entry = pcMetaTable->find(lookupPC);
       PCT_lookups++;
+      energy_stats.pat_read[waysForPCTable == 1 ? 0 : 1]++;
       if (pc_meta_entry) {
         PCT_hits++;
         pcMetaTable->touch(lookupPC);
@@ -475,7 +488,9 @@ uint32_t prism::prefetcher_cache_fill(champsim::address addr, long set, long way
 void prism::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where)
 {
   auto pc_entry = pcTable->find(ip.to<uint64_t>());
+  energy_stats.training_table_read++;
   if (pc_entry) {
+    energy_stats.training_table_write++;
     pc_entry->data.latePrefetchCount++;
   }
 }
@@ -525,6 +540,24 @@ void prism::prefetcher_final_stats()
   cout << "Init_Score " << init_resize_score << endl;
   cout << "Init_WayForMarkov " << init_ways_for_markov << endl;
   cout << "Init_WayForPCT " << init_ways_for_pc_metadata_table << endl;
+
+
+  cout << "training_unit_read " << energy_stats.training_table_read << endl;
+  cout << "training_unit_write " << energy_stats.training_table_write << endl;
+  cout << "1_way_markov_table_read " << energy_stats.markov_read[0] << endl;
+  cout << "1_way_markov_table_write " << energy_stats.markov_write[0] << endl;
+  cout << "8_way_markov_table_read " << energy_stats.markov_read[1] << endl;
+  cout << "8_way_markov_table_write " << energy_stats.markov_write[1] << endl;
+  cout << "filter_table_read " << energy_stats.filter_table_read << endl;
+  cout << "filter_table_write " << energy_stats.filter_table_write << endl;
+  cout << "1_way_pat_table_read " << energy_stats.pat_read[0] << endl;
+  cout << "1_way_pat_table_write " << energy_stats.pat_write[0] << endl;
+  cout << "2_way_pat_table_read " << energy_stats.pat_read[1] << endl;
+  cout << "2_way_pat_table_write " << energy_stats.pat_write[1] << endl;
+  for(int i =1;i<7;i++){
+    cout << "pat_lookup_times_" << i << " " << pat_lookup_times[i] << endl;
+  }
+
 }
 
 void prism::prefetcher_cycle_operate() {}
@@ -532,6 +565,7 @@ void prism::prefetcher_cycle_operate() {}
 bool prismMetaTable::insert(uint64_t key, uint64_t ip, const MetaTableEntry& data)
 {
   prefetcher->MT_inserts++;
+  prefetcher->energy_stats.markov_write[prefetcher->waysForMarkov == 1 ? 0 : 1]++;
   reverse_metatable[data.target_addr].insert(key);
 
   Entry victim_entry = Super::insert(key, data);

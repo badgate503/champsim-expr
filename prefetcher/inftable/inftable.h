@@ -1,5 +1,5 @@
-#ifndef BASELINE
-#define BASELINE
+#ifndef INFTABLE
+#define INFTABLE
 
 #include <cassert>
 #include <cstdint>
@@ -23,34 +23,38 @@
 #define PC_TABLE_SIZE 512
 #define PC_TABLE_ASSOC 16
 #define WAY_MARKOV 4
-#define META_TABLE_SIZE (N_LLC_SET * 12 * WAY_MARKOV)
+#define META_TABLE_SIZE (4096 * 12 * WAY_MARKOV)
 #define META_TABLE_ASSOC 12
 #define GLOBAL_DEGREE 1 
 
-class baseline;
+#ifndef INFT_LLC_WAY
+#define INFT_LLC_WAY 8
+#endif
 
-struct baselineMetaTableEntry {
+class inftable;
+
+struct inftableMetaTableEntry {
 
   uint64_t correlated_addr;
   bool used;
 
-  baselineMetaTableEntry() : correlated_addr(0), used(false) {};
-  baselineMetaTableEntry(uint64_t addr) : correlated_addr(addr) {};
+  inftableMetaTableEntry() : correlated_addr(0), used(false) {};
+  inftableMetaTableEntry(uint64_t addr) : correlated_addr(addr) {};
 };
 
-class baselineMetaTable : public LRUSetAssociativeCache<baselineMetaTableEntry>
+class inftableMetaTable : public LRUSetAssociativeCache<inftableMetaTableEntry>
 {
-  typedef LRUSetAssociativeCache<baselineMetaTableEntry> Super;
+  typedef LRUSetAssociativeCache<inftableMetaTableEntry> Super;
 
 public:
   std::unordered_map<uint64_t, std::set<uint64_t>> reverse_metatable;
-  baseline* prefetcher;
+  inftable* prefetcher;
 
-  baselineMetaTable(int size, int num_ways) : Super(size, num_ways), prefetcher(nullptr) {}
+  inftableMetaTable(int size, int num_ways) : Super(size, num_ways), prefetcher(nullptr) {}
 
-  void setpp(baseline* p) { prefetcher = p; }
+  void setpp(inftable* p) { prefetcher = p; }
 
-  baselineMetaTableEntry* find(uint64_t key)
+  inftableMetaTableEntry* find(uint64_t key)
   {
     Entry* entry = Super::find(key);
     if (!entry) {
@@ -63,12 +67,12 @@ public:
       If evict another valid entry: return true!
       else: return false!
   */
-  bool insert(uint64_t key, const baselineMetaTableEntry& data);
+  bool insert(uint64_t key, const inftableMetaTableEntry& data);
 
   Entry* erase(uint64_t key) { return Super::erase(key); }
 };
 
-class baseline : public champsim::modules::prefetcher
+class inftable : public champsim::modules::prefetcher
 {
 public:
   // BaseTags* cachetags;
@@ -82,47 +86,22 @@ public:
   int waysForCache = 8;
 
   // stat
+  uint64_t meta_table_lookups = 0;
+  uint64_t meta_table_hits = 0;
   uint64_t meta_table_issued_prefetches = 0;
   uint64_t meta_table_accurate_prefetches = 0;
   std::set<uint64_t> meta_table_prefetches;
 
-  baselineMetaTable* metaTable = new baselineMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
+  //inftableMetaTable* metaTable = new inftableMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
 
-  LRUSetAssociativeCache<std::deque<uint64_t>>* pcTable = new LRUSetAssociativeCache<std::deque<uint64_t>>(PC_TABLE_SIZE, PC_TABLE_ASSOC);
+  std::unordered_map<uint64_t, inftableMetaTableEntry> metaTable;
+
+  std::map<uint64_t, std::deque<uint64_t>> pcTable;
 
   std::string log_file_name;
   std::string hint_file;
   std::ofstream logfile;
   bool warmup_complete = false;
-
-  // stat MT lookups
-  uint64_t MT_lookups = 0;
-  uint64_t MT_hits = 0;
-  uint64_t MT_inserts = 0;
-  // uint64_t MT_lookup_reqs = 0;
-  // uint64_t MT_lookup_returns = 0;
-  bool warmup_reset = false;
-
-  uint64_t training_unit_read = 0;
-  uint64_t training_unit_write = 0;
-  uint64_t markov_read = 0;
-  uint64_t markov_write = 0;
-
-  void reset_stat_counters()
-  {
-    MT_lookups = 0;
-    MT_hits = 0;
-    MT_inserts = 0;
-
-    training_unit_read = 0;
-    training_unit_write = 0;
-    markov_read = 0;
-    markov_write = 0;
-
-    meta_table_issued_prefetches = 0;
-    meta_table_accurate_prefetches = 0;
-    warmup_reset = true;
-  }
 
   std::string toProfilePath(const std::string& full_path)
   {
@@ -156,7 +135,7 @@ public:
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
-    llc_cache->set_available_ways(16- WAY_MARKOV);
+    llc_cache->set_available_ways(INFT_LLC_WAY);
   }
 
   bool isAlreadyInQueue(std::vector<uint64_t>& addresses, uint64_t addr)
@@ -168,32 +147,26 @@ public:
     return false;
   }
 
-  int issue_metatable(baselineMetaTable* metaTable, uint64_t pc, uint64_t lookup, std::vector<uint64_t>& addresses);
+  int issue_metatable(std::unordered_map<uint64_t, inftableMetaTableEntry>& metaTable, uint64_t pc, uint64_t lookup, std::vector<uint64_t>& addresses);
 
+  /* deprecated */
   uint64_t get_last(uint64_t ip)
   {
-    auto pc_entry = pcTable->find(ip);
-    if (pc_entry) {
-      return pc_entry->data.front();
-    } else {
-      return 0;
-    }
+    return 0;
   };
 
+  /* deprecated */
   std::set<uint64_t> get_triggers(uint64_t target)
   {
-    if (metaTable->reverse_metatable.find(target) != metaTable->reverse_metatable.end()) {
-      return metaTable->reverse_metatable[target];
-    } else {
-      return std::set<uint64_t>();
-    }
+    return std::set<uint64_t>{};
   };
 
   using champsim::modules::prefetcher::prefetcher;
 
   void prefetcher_initialize()
   {
-    metaTable->setpp(this);
+    //metaTable->setpp(this);
+    cout << "Alloc " << INFT_LLC_WAY << " ways for LLC" << endl;
 #ifdef MISS_CLASS_LOG
     benchmark = champsim::global_trace_name;
     log_file_name = "./" + toProfilePath(benchmark) + ".txt";
@@ -210,4 +183,4 @@ public:
   void prefetcher_final_stats();
 };
 
-#endif // __MEM_CACHE_PREFETCH_baseline_HH__
+#endif // __MEM_CACHE_PREFETCH_inftable_HH__

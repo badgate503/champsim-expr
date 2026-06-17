@@ -45,3 +45,5 @@ python3 get_result.py -p baseline.4way prism-ol-pctp prism-ol-tgp prism-ol-bmp p
 
 ######################################## PATSIZE
 python3 get_result.py -p pctpinf.a8 pctp12k pctp24k pctp48k pctp96k pctp144k pctp192k -o ./result/plot_data/pctp -m IPCI
+
+python3 get_result.py -p inftable16 prism optimal -o ./result/optimal -m IPCI

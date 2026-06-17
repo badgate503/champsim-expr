@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.11
+#!/usr/bin/env python3
 
 from utils.defs import *
 import argparse
@@ -26,6 +26,10 @@ args = parser.parse_args()
 
 PF_LIST = [
     # "no",
+    # "optimal",
+    # "inftable8",
+    # "inftable12",
+    # "inftable16",
     # "baseline.1way",
     # "baseline.2way",
     # "baseline.3way",
@@ -35,11 +39,13 @@ PF_LIST = [
     # "baseline.7way",
     # "baseline.8way",
     # "acc_stat",
-    "triangel",
-    "prophet",
+    # "triangel",
+    # "triangel_8way",
+    # "prophet",
     # "kairos",
     # "croage",
-    "prism",
+    # "prism",
+    # "prism-wo-pctp",
     # "prism_final",
     # "prism33",
     # "prism_l1",
@@ -169,6 +175,156 @@ PF_LIST = [
     # "ltp4wayl4d4",
     # "ltp4wayl4d6",
     # "ltp4wayl4d8",
+
+    # "prism_degree_1",
+    # "prism_degree_2",
+    # "prism_degree_3",
+    # "prism_degree_4",
+    # "prism_degree_5",
+    # "prism_degree_6",
+
+
+    "acc_low00_high55",
+    "acc_low00_high65",
+    "acc_low00_high75",
+    "acc_low00_high85",
+    "acc_low00_high95",
+    # "acc_low00_high100",
+
+    "acc_low05_high55",
+    "acc_low05_high65",
+    "acc_low05_high75",
+    "acc_low05_high85",
+    "acc_low05_high95",
+    # "acc_low05_high100",
+
+    "acc_low10_high55",
+    "acc_low10_high65",
+    "acc_low10_high75",
+    "acc_low10_high85",
+    "acc_low10_high95",
+    # "acc_low10_high100",
+
+    "acc_low15_high55",
+    "acc_low15_high65",
+    "acc_low15_high75",
+    "acc_low15_high85",
+    "acc_low15_high95",
+    # "acc_low15_high100",
+
+    "acc_low20_high55",
+    "acc_low20_high65",
+    "acc_low20_high75",
+    "acc_low20_high85",
+    "acc_low20_high95",
+    # "acc_low20_high100",
+
+    # "acc_low25_high55",
+    # "acc_low25_high65",
+    # "acc_low25_high75",
+    # "acc_low25_high85",
+    # "acc_low25_high95",
+    # "acc_low25_high100",
+
+    # "acc_low30_high55",
+    # "acc_low30_high65",
+    # "acc_low30_high75",
+    # "acc_low30_high85",
+    # "acc_low30_high95",
+    # "acc_low30_high100",
+
+    # "acc_late05",
+    # "acc_late10", 
+    # "acc_late15",
+    # "acc_late20", 
+    # "acc_late25",
+
+    # "bw_mid6_high11",
+    # "bw_mid6_high12",
+    # "bw_mid6_high13",
+    # "bw_mid6_high14",
+    # "bw_mid6_high15",
+    # "bw_mid7_high11",
+    # "bw_mid7_high12",
+    # "bw_mid7_high13",
+    # "bw_mid7_high14",
+    # "bw_mid7_high15",
+    # "bw_mid8_high11",
+    # "bw_mid8_high12",
+    # "bw_mid8_high13",
+    # "bw_mid8_high14",
+    # "bw_mid8_high15",
+    # "bw_mid9_high11",
+    # "bw_mid9_high12",
+    # "bw_mid9_high13",
+    # "bw_mid9_high14",
+    # "bw_mid9_high15",
+    # "bw_mid10_high11",
+    # "bw_mid10_high12",
+    # "bw_mid10_high13",
+    # "bw_mid10_high14",
+    # "bw_mid10_high15",
+
+    # "init1_1.5_1",
+    # "init1_1.5_1.25",
+    # "init1_1.5_1.5",
+    # "init1_1.5_1.75",
+    # "init1_1.5_2",
+
+    # "init1_1.75_1",
+    # "init1_1.75_1.25",
+    # "init1_1.75_1.5",
+    # "init1_1.75_1.75",
+    # "init1_1.75_2",
+
+    # "k_1_0.25",
+    # "k_1_0.5",
+    # "k_1_0.75",
+    # "k_1_1",
+    # "k_1_1.25",
+    # "k_1_1.5",
+    # #"k_1_1.75",
+
+    # "k_1.25_0.25",
+    # "k_1.25_0.5",
+    # "k_1.25_0.75",
+    # "k_1.25_1",
+    # "k_1.25_1.25",
+    # "k_1.25_1.5",
+    # #"k_1.25_1.75",
+
+    # "k_1.5_0.25",
+    # "k_1.5_0.5",
+    # "k_1.5_0.75",
+    # "k_1.5_1",
+    # "k_1.5_1.25",
+    # "k_1.5_1.5",
+    # #"k_1.5_1.75",
+
+    # "k_1.75_0.25",
+    # "k_1.75_0.5",
+    # "k_1.75_0.75",
+    # "k_1.75_1",
+    # "k_1.75_1.25",
+    # "k_1.75_1.5",
+    # #"k_1.75_1.75",
+
+    # "k_2_0.25",
+    # "k_2_0.5",
+    # "k_2_0.75",
+    # "k_2_1",
+    # "k_2_1.25",
+    # "k_2_1.5",
+    # #"k_2_1.75",
+
+    # "k_2.25_0.25",
+    # "k_2.25_0.5",
+    # "k_2.25_0.75",
+    # "k_2.25_1",
+    # "k_2.25_1.25",
+    # "k_2.25_1.5",
+    #"k_2.25_1.75",
+
 ]
 pf_alias_map = dict()
 if args.pflist is not None:
@@ -226,7 +382,7 @@ METRICS = [
     "L2C_PF_Issue",
     "L2C_PF_Fill",
 ]
-BASELINE = "no"
+BASELINE = "baseline.4way"
 def get_measure(path, baseline_result = None):
     if not os.path.exists(path):
         print(f"{RED}Error: Log file {path} not found.{END}")

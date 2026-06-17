@@ -5,7 +5,7 @@ import csv
 from collections import defaultdict
 
 BASE_DIR = "/mnt/data/lyq/exprlog"
-CORES = ["core2", "core4", "core8"]
+CORES = ["core4"]
 
 # 匹配 IPC
 IPC_PATTERN = re.compile(r"CPU \d+ cumulative IPC:\s*([0-9.]+)")

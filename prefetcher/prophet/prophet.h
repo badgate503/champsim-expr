@@ -239,6 +239,13 @@ public:
   uint64_t MT_lookup_reqs = 0;
   uint64_t MT_lookup_returns = 0;
 
+  uint64_t rb_read_n = 0;
+  uint64_t rb_write_n = 0;
+  uint64_t md_read_n = 0;
+  uint64_t md_write_n = 0;
+  uint64_t tu_read_n = 0;
+  uint64_t tu_write_n = 0;
+
   bool warmup_reset = false;
   void reset_stat_counters()
   {
@@ -247,6 +254,13 @@ public:
     MT_inserts = 0;
     MT_lookup_reqs = 0;
     MT_lookup_returns = 0;
+
+      rb_read_n = 0;
+      rb_write_n = 0;
+      md_read_n = 0;
+      md_write_n = 0;
+      tu_read_n = 0;
+      tu_write_n = 0;
 
     warmup_reset = true;
   }

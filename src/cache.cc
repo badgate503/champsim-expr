@@ -22,6 +22,7 @@
 #include <iomanip>
 #include <numeric>
 #include <fmt/core.h>
+#include <iostream>
 
 #include "bandwidth.h"
 #include "champsim.h"
@@ -38,6 +39,11 @@ CACHE::CACHE(CACHE&& other)
       upper_levels(std::move(other.upper_levels)), lower_level(std::move(other.lower_level)), lower_translate(std::move(other.lower_translate)),
 
       cpu(other.cpu), NAME(std::move(other.NAME)), NUM_SET(other.NUM_SET), NUM_WAY(other.NUM_WAY), available_ways(other.available_ways),
+
+#ifdef OPT_PREFETCH
+      accessed_addresses(std::move(other.accessed_addresses)),
+#endif
+
       MSHR_SIZE(other.MSHR_SIZE), PQ_SIZE(other.PQ_SIZE), HIT_LATENCY(other.HIT_LATENCY), FILL_LATENCY(other.FILL_LATENCY), OFFSET_BITS(other.OFFSET_BITS),
       block(std::move(other.block)), MAX_TAG(other.MAX_TAG), MAX_FILL(other.MAX_FILL), prefetch_as_load(other.prefetch_as_load),
       match_offset_bits(other.match_offset_bits), virtual_prefetch(other.virtual_prefetch), pref_activate_mask(std::move(other.pref_activate_mask)),
@@ -66,6 +72,9 @@ auto CACHE::operator=(CACHE&& other) -> CACHE&
   this->NUM_WAY = other.NUM_WAY;
   this->available_ways = other.available_ways;
   ;
+#ifdef OPT_PREFETCH
+  this->accessed_addresses = std::move(other.accessed_addresses);
+#endif
   this->MSHR_SIZE = other.MSHR_SIZE;
   ;
   this->PQ_SIZE = other.PQ_SIZE;
@@ -268,12 +277,13 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
 
 bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
 {
+
   cpu = handle_pkt.cpu;
 
   // access cache
   auto [set_begin, set_end] = get_available_set_span(handle_pkt.address);
   auto way = std::find_if(set_begin, set_end, [matcher = matches_address(handle_pkt.address)](const auto& x) { return x.valid && matcher(x); });
-  const auto hit = (way != set_end);
+  auto hit = (way != set_end);
   const auto useful_prefetch = (hit && way->prefetch && !handle_pkt.prefetch_from_this);
 
   // lyq: should "prefetch hit" be included in accurate prefetches?
@@ -319,6 +329,22 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   const auto way_idx = std::distance(set_begin, way);
   impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, {}, handle_pkt.type,
                                 hit);
+
+#ifdef OPT_PREFETCH  // TODO: Only for Optimal Prefetching IPC.
+  if(NAME.compare(NAME.size()-3,3,"L2C") == 0) {
+    if(handle_pkt.type == access_type::LOAD || handle_pkt.type == access_type::PREFETCH){
+      auto line_addr = handle_pkt.address.slice_upper(OFFSET_BITS).to<uint64_t>();
+      if(accessed_addresses.find(line_addr) != accessed_addresses.end()){
+        sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+        response_type response{handle_pkt.address, handle_pkt.v_address, handle_pkt.data, metadata_thru, handle_pkt.instr_depend_on_me};
+        for (auto* ret : handle_pkt.to_return) {
+          ret->push_back(response);
+        }
+        return true;
+      }
+    }
+  }
+#endif
 
   if (hit) {
     sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
@@ -421,6 +447,14 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
   }
 
   sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+
+#ifdef OPT_PREFETCH
+  if(NAME.compare(NAME.size()-3,3,"L2C") == 0) {
+    if(handle_pkt.type == access_type::LOAD || handle_pkt.type == access_type::PREFETCH) {
+      accessed_addresses.insert(handle_pkt.address.slice_upper(OFFSET_BITS).to<uint64_t>());
+    }
+  }
+#endif
 
   return true;
 }

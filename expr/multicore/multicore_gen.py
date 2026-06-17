@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Sequence
 parser = argparse.ArgumentParser()
 parser.add_argument("--core", "-c", type=int, default=2, help="每个组合的核数")
 parser.add_argument("--num-per-suite", "-n", type=int, default=2, help="每个类别抽取的组合数量")
-# 修改点：默认允许重复，通过 --no-repeat 关闭
+# 8core 场景下，禁止重复可能导致某些类别无法抽取足够的组合，因此在8 core下允许重复。
 parser.add_argument("--no-repeat", action="store_true", help="禁止同一个组合内挑选重复的 trace")
 args = parser.parse_args()
 

@@ -255,4 +255,4 @@ def get_expr_result_rpc():
     data = request.json
     result = get_expr_result(data["prefetcher"], data["trace"])
     return jsonify(result)
-app.run(host="0.0.0.0", port=8000)
+app.run(host="0.0.0.0", port=8003)

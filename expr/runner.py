@@ -57,7 +57,7 @@ for root, dirs, files in os.walk(TRACE_PATH):
 def launch_task(p, w, log, alias = ""):
     mode_is_mc = p.endswith(".mc")
     trace_all = [trace_path_map[v] for v in w]
-    work = [f"/mnt/data/lyq/Kairos/bin/{p}", "--warmup-instructions", f"{WARM_UP}", "--simulation-instructions", f"{INTERVAL}"] + trace_all
+    work = [f"/mnt/data/lyq/PRISM/bin/{p}", "--warmup-instructions", f"{WARM_UP}", "--simulation-instructions", f"{INTERVAL}"] + trace_all
     if alias == "":
         name = f"{w[0]}.log"
     else:
@@ -100,15 +100,19 @@ def launch_task(p, w, log, alias = ""):
     else:
         return f"{YELLOW}{p}{END}@{RED}{len(w)}core-{alias}{END}"
 import time
-def dummy_launch_task(p,w,l):
+def dummy_launch_task(p,w,l, alias = ""):
+    mode_is_mc = p.endswith(".mc")
+    trace_all = [trace_path_map[v] for v in w]
+    work = [f"/mnt/data/lyq/PRISM/bin/{p}", "--warmup-instructions", f"{WARM_UP}", "--simulation-instructions", f"{INTERVAL}"] + trace_all
+    print(f"模拟执行: {' '.join(work)}")
     time.sleep(30)
-    return f"{YELLOW}{p}{END}@{RED}{w}{END}"
+    return f"{YELLOW}{p}{END}@{RED}{w}{END}alias={alias}{END}"
 from queue import Empty
 
 if __name__ == "__main__":
     manager = QueueManager(address=('', 50003), authkey=b'abc')
     manager.start()
-    print("Runner Manager started on port 50001")
+    print("Runner Manager started on port 50003")
     
     # 2. 获取受管理的共享队列对象 (关键！)
     shared_queue = manager.get_queue()
@@ -143,7 +147,8 @@ if __name__ == "__main__":
                             for line in lines:
                                 parts = line.strip().split(",")
                                 if parts[0] == w:
-                                    candidates = parts[1:]         
+                                    candidates = parts[1:]    
+                                    #print(line)
                         future = executor.submit(launch_task, p, candidates, log, alias=f"{w}")
                         print(f"新增: {YELLOW}{p}{END}@{RED}{ncore}core-{w}{END}, 队列中任务数: {total_n}，已加载: {len(running)}")
                 

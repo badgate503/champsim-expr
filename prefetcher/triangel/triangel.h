@@ -473,14 +473,22 @@ public:
   uint64_t set_mask;
   uint64_t ways;
 
+  uint64_t read_n;
+  uint64_t write_n;
+
 public:
-  AssociativeCache(uint64_t sets, int ways, ReplacementPolicy policy, const std::string& owner = "unknown") : count(0), set_mask(sets - 1), ways(ways)
+  AssociativeCache(uint64_t sets, int ways, ReplacementPolicy policy, const std::string& owner = "unknown") : count(0), set_mask(sets - 1), ways(ways), read_n(0), write_n(0)
   {
     table.reserve(sets);
     for (size_t i = 0; i < sets; i++) {
       table.push_back(new Cacheway<T>(ways, policy, owner));
     }
     std::cout << owner << " initialized, " << ways << " ways * " << sets << " sets" << std::endl;
+  }
+
+  void ClearCnt() {
+    read_n = 0;
+    write_n = 0;
   }
 
   ~AssociativeCache()
@@ -790,14 +798,21 @@ public:
   std::vector<RRIPCacheway<MetadataEntry>*> table;
   uint64_t cache_way_allocated;
   uint64_t count;
+  uint64_t read_n;
+  uint64_t write_n;
 
 public:
-  Metadata(uint64_t set = (1 << TRNGL_MD_INDEX_BITS), int ways = TRNGL_MD_ASSOC) : cache_way_allocated(4), count(0)
+  Metadata(uint64_t set = (1 << TRNGL_MD_INDEX_BITS), int ways = TRNGL_MD_ASSOC) : cache_way_allocated(4), count(0), read_n(0), write_n(0)
   {
     table.reserve(set);
     for (size_t i = 0; i < set; i++) {
       table.push_back(new RRIPCacheway<MetadataEntry>(ways, "MD"));
     }
+  }
+
+  void ClearCnt() {
+    read_n = 0;
+    write_n = 0;
   }
 
   
@@ -901,6 +916,11 @@ public: // All members shall be basic variables, pointers, or implement proper c
     MT_inserts = 0;
     MT_lookup_reqs = 0;
     MT_lookup_returns = 0;
+    TU->ClearCnt();
+    HS->ClearCnt();
+    SC->ClearCnt();
+    RB->ClearCnt();
+    MD->ClearCnt();
     warmup_reset = true;
   }
 
@@ -944,6 +964,8 @@ public: // All members shall be basic variables, pointers, or implement proper c
   {
     if (use_rb) {
       auto RB_entry = RB->find(addr);
+      /* Energy */
+      RB->read_n++;
       if (RB_entry) {
         last_access_from_mrb = true;
         return RB_entry;
@@ -951,12 +973,16 @@ public: // All members shall be basic variables, pointers, or implement proper c
     }
 
     auto MD_entry = MD->find(addr);
+    /* Energy */
+    MD->read_n++;
     if (MD_entry) {
       last_access_from_mrb = false;
       if (use_rb) {
         MetadataEntry RB_new = MetadataEntry(addr, MD_entry->target_addr);
         RB_new.conf = MD_entry->conf;
         RB->set(addr, RB_new);
+        /* Energy */
+        RB->write_n++;
       }
       return MD_entry;
     }
@@ -973,6 +999,10 @@ public: // All members shall be basic variables, pointers, or implement proper c
     assert(addr != target_addr);
 
     auto MD_entry = MD->find(addr);
+    /* Energy */
+    MD->read_n++;
+    /* Energy */
+    MD->write_n++;
     if (MD_entry) {
       if (MD_entry->target_addr == target_addr) {
         MD_entry->conf = true;

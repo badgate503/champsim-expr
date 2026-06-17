@@ -17,6 +17,10 @@
 #ifndef CACHE_H
 #define CACHE_H
 
+#ifndef N_LLC_SET
+#define N_LLC_SET 4096
+#endif
+
 #ifdef CHAMPSIM_MODULE
 #define SET_ASIDE_CHAMPSIM_MODULE
 #undef CHAMPSIM_MODULE
@@ -32,6 +36,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 #include <vector>
 
 #include "address.h"
@@ -164,7 +169,11 @@ public:
   uint32_t NUM_SET, NUM_WAY, MSHR_SIZE;
 
   uint32_t available_ways;  // 可用路数
-  
+
+#ifdef OPT_PREFETCH
+  std::unordered_set<uint64_t> accessed_addresses{}; // for debug
+#endif
+
   // 获取限制路数的set span
   std::pair<set_type::iterator, set_type::iterator> get_available_set_span(champsim::address address);
   std::pair<set_type::const_iterator, set_type::const_iterator> get_available_set_span(champsim::address address) const;

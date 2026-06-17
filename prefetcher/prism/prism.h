@@ -25,6 +25,9 @@
 #define BMP_RESIZE
 #define RESIZE_SAMPLE_WINDOW 100000
 #define SAMPLE_INTERVAL 10000000
+#define K_AGGR 1.5
+#define K_CONS 1.5
+#define DYNAMIC_PARTITIONING true
 
 #define TG_PREFETCHING
 
@@ -35,8 +38,15 @@
 #define DEFAULT_LOOKAHEAD 2
 #define DEFAULT_DEGREE 3
 #define DYNAMIC_DEGREE
+#define T_ACC_OFF 0.05
+#define T_ACC_LOW 0.15
+#define T_ACC_HIGH 0.75
+#define T_LATE 0.10
+#define T_BW_OFF 14  // max = 15
+#define T_BW_HIGH 12
+#define T_BW_MID 8
 #define PREFETCH_FILTER
-#define MULTI_LEVEL_PREFETCH
+// #define MULTI_LEVEL_PREFETCH
 #else
 #define DEFAULT_LOOKAHEAD 0
 #define DEFAULT_DEGREE 1
@@ -51,6 +61,7 @@
 #else
 #define INIT_WAY_MARKOV 4
 #endif
+
 #define MIN_WAY_MARKOV 1
 #define MAX_WAY_MARKOV 8
 #define META_TABLE_SIZE (N_LLC_SET * 12 * INIT_WAY_MARKOV)
@@ -108,10 +119,10 @@ public:
 };
 
 struct pf_filter_entry {
-  uint64_t pf_addr;
+  uint64_t cur_addr;
+  uint64_t next_addr;
   bool fill_l2;
-  pf_filter_entry* next;
-  pf_filter_entry(uint64_t addr = 0, bool fill = true, pf_filter_entry* ptr = nullptr) : pf_addr(addr), fill_l2(fill), next(ptr) {};
+  pf_filter_entry(uint64_t _addr = 0, uint64_t _next_addr = 0, bool _fill_l2 = true) : cur_addr(_addr), next_addr(_next_addr), fill_l2(_fill_l2) {};
 };
 
 class PF_Filter : public FIFOSetAssociativeCache<pf_filter_entry>
@@ -120,19 +131,20 @@ class PF_Filter : public FIFOSetAssociativeCache<pf_filter_entry>
 
 public:
   const uint64_t mask;
+
   PF_Filter(int size, int num_ways, int debug_level = 0)
       : Super(size, num_ways, debug_level), mask((1ULL << (__builtin_ctz(size) + PF_FILTER_TAG_WIDTH)) - 1) {};
 
-  pf_filter_entry* insert(uint64_t pf_addr, bool fill_l2)
+  pf_filter_entry* insert(uint64_t cur_addr, uint64_t next_addr, bool fill_l2 = true)
   {
-    uint64_t key = build_key(pf_addr);
-    Super::insert(key, {pf_addr, fill_l2});
+    uint64_t key = build_key(cur_addr);
+    Super::insert(key, {cur_addr, next_addr, fill_l2});
     return &(Super::find(key)->data);
   }
 
-  pf_filter_entry* find(uint64_t addr)
+  pf_filter_entry* find(uint64_t cur_addr)
   {
-    uint64_t key = build_key(addr);
+    uint64_t key = build_key(cur_addr);
     Entry* entry = Super::find(key);
     if (!entry) {
       return nullptr;
@@ -141,18 +153,15 @@ public:
   };
 
   // may broke FIFO
-  void erase(uint64_t addr)
+  void erase(uint64_t cur_addr)
   {
-    uint64_t key = build_key(addr);
+    uint64_t key = build_key(cur_addr);
     auto victim = Super::erase(key);
-    if (victim) {
-      victim->data.next = nullptr;
-    }
   }
 
-  uint64_t build_key(uint64_t addr)
+  uint64_t build_key(uint64_t cur_addr)
   {
-    uint64_t key = hash_xor(addr);
+    uint64_t key = hash_xor(cur_addr);
     key &= mask;
     return key;
   };
@@ -191,6 +200,20 @@ public:
   uint64_t PCT_inserts = 0;
   bool warmup_reset = false;
 
+  struct energy_stat {
+    uint64_t training_table_read;
+    uint64_t training_table_write;
+    uint64_t filter_table_read;
+    uint64_t filter_table_write;
+    uint64_t markov_read[2];
+    uint64_t markov_write[2];
+    uint64_t pat_read[2];
+    uint64_t pat_write[2];
+    void reset(){ *this = {};}
+  } energy_stats;
+
+  int pat_lookup_times[7] = {0, 0, 0, 0, 0, 0, 0};
+
   struct PCTableEntry {
     uint64_t lookahead;
     int degree;
@@ -209,6 +232,7 @@ public:
     };
     void update_counter(uint64_t pc)
     {
+#ifdef DYNAMIC_DEGREE
       float laterate = 0;
       float accuracy = 0;
       if (latePrefetchCount + usefulPrefetchCount)
@@ -217,26 +241,38 @@ public:
         accuracy = 1.0 * (latePrefetchCount + usefulPrefetchCount) / (latePrefetchCount + issuedPrefetchCount);
 
       int delta_degree = 0;
-      if (accuracy > 0.75) {
-        if (laterate > 0.1) {
-          delta_degree = 2;
-        } else {
-          delta_degree = 1;
-        }
-      } else if (accuracy < 0.05) {
-        delta_degree = -degree;
-      } else if (accuracy < 0.15) {
-        if (degree > 1)
-          delta_degree = -1;
+
+      // if (accuracy > T_ACC_HIGH) {
+      //   if (laterate > T_LATE) {
+      //     delta_degree = 2;
+      //   } else {
+      //     delta_degree = 1;
+      //   }
+      // } else if (accuracy <= T_ACC_OFF) {
+      //   delta_degree = -degree;
+      // } else if (accuracy <= T_ACC_LOW) {
+      //   if (degree > 1)
+      //     delta_degree = -1;
+      // } else {
+      //   if (laterate > T_LATE)
+      //     delta_degree = 1;
+      // }
+
+      if (accuracy <= T_ACC_LOW) {
+        delta_degree = -1;
       } else {
-        if (laterate > 0.1)
-          delta_degree = 1;
+        if (laterate > T_LATE)
+          delta_degree += 1;
+        if (accuracy > T_ACC_HIGH)
+          delta_degree += 1;
       }
+
       degree += delta_degree;
       if (degree < 0)
         degree = 0;
       if (degree > 6)
         degree = 6;
+#endif
 
       latePrefetchCount = 0;
       usefulPrefetchCount = 0;
@@ -375,14 +411,20 @@ public:
       temp_useful_prefetch_rate = (1.0 * resize_useful_prefetch / resize_issued_prefetch);
 
     if (large_markov) {
-      temp_resize_score = 3 * temp_llc_hit_rate - 2 * temp_useful_prefetch_rate;
+      temp_resize_score = K_AGGR * temp_llc_hit_rate - temp_useful_prefetch_rate;
+      if (!DYNAMIC_PARTITIONING && init_resized) {
+        temp_resize_score = 0;
+      }
       if (temp_resize_score > 0) {
         waysForCache = 16 - MIN_WAY_MARKOV;
         waysForMarkov = MIN_WAY_MARKOV;
         large_markov = false;
       }
     } else {
-      temp_resize_score = 1 * temp_llc_hit_rate - 2 * temp_useful_prefetch_rate;
+      temp_resize_score = K_CONS * temp_llc_hit_rate - temp_useful_prefetch_rate;
+      if (!DYNAMIC_PARTITIONING && init_resized) {
+        temp_resize_score = 0;
+      }
       if (temp_resize_score < 0) {
         waysForCache = 16 - MAX_WAY_MARKOV;
         waysForMarkov = MAX_WAY_MARKOV;
@@ -443,6 +485,8 @@ public:
       mainMetaTable = resized_metadata_table;
       mainMetaTable->setpp(this);
       cout << "Resize markov table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
+    }else {
+      cout << "Donot Resize markov table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
     }
 
     if (!init_resized) {
@@ -471,6 +515,9 @@ public:
 
     unmodified_PC = 0;
     inserted_PC = 0;
+
+    energy_stats.reset();
+    memset(pat_lookup_times, 0, sizeof(pat_lookup_times));
 
     warmup_reset = true;
   }
