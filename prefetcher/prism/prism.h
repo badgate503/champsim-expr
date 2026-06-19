@@ -294,10 +294,10 @@ public:
   // For PC_TRIGGER_PREFETCHING
   bool enable_PC_Trigger_prefetching = false;
   int init_ways_for_pc_metadata_table;
-  uint64_t unmodified_PC = 0;
+  uint64_t fail_entry_init = 0;
   uint64_t inserted_PC = 0;
   uint64_t init_insert_PC = 0;
-  uint64_t init_unmodified_PC = 0;
+  uint64_t init_fail_entry_init = 0;
   std::deque<uint64_t> PCQ;
   // SRRIPSetAssociativeCache<MetaTableEntry>* pcMetaTable = new SRRIPSetAssociativeCache<MetaTableEntry>(PC_META_TABLE_SIZE, PC_META_TABLE_ASSOC);
   SRRIPSetAssociativeCache<MetaTableEntry>* pcMetaTable = nullptr;
@@ -356,12 +356,12 @@ public:
     if (!init_resized) {
       init_ways_for_pc_metadata_table = waysForPCTable;
       init_insert_PC = inserted_PC;
-      init_unmodified_PC = unmodified_PC;
+      init_fail_entry_init = fail_entry_init;
     }
 
     origin_waysForPCTable = waysForPCTable;
     inserted_PC = 0;
-    unmodified_PC = 0;
+    fail_entry_init = 0;
   }
 
 #ifdef CONFLICT_PREFETCHING
@@ -513,7 +513,7 @@ public:
     PCM_useful_prefetches = 0;
     PCM_useless_prefetches = 0;
 
-    unmodified_PC = 0;
+    fail_entry_init = 0;
     inserted_PC = 0;
 
     energy_stats.reset();

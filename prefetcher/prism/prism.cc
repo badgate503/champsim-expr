@@ -390,12 +390,10 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
   } else {
     train_pc_meta_table = true;
     auto victim_pc_entry = pcTable->insert(pc, {block_addr, cache_hit});
-    if (!llc_cache->warmup) {
-      if (victim_pc_entry.valid && !victim_pc_entry.data.modified) {
-        unmodified_PC++;
-      }
-      inserted_PC++;
-    }
+    inserted_PC++;
+  }
+  if (train_pc_meta_table){
+    fail_entry_init++;
   }
 
 #ifdef PC_TRIGGER_PREFETCHING
@@ -521,7 +519,7 @@ void prism::prefetcher_final_stats()
   uint64_t PCM_total_prefetches = PCM_late_prefetches + PCM_useful_prefetches + PCM_useless_prefetches;
   cout << "PCM_accuracy " << (PCM_total_prefetches ? (double)PCM_accurate_prefetches / PCM_total_prefetches : 0) << endl;
   cout << "PCM_laterate " << (PCM_accurate_prefetches ? (double)PCM_late_prefetches / PCM_accurate_prefetches : 0) << endl;
-  cout << "Unmod_PC " << init_unmodified_PC << endl;
+  cout << "Fail_Entry_Init " << init_fail_entry_init << endl;
   cout << "Insert_PC " << init_insert_PC << endl;
 #endif
 
