@@ -4,7 +4,7 @@
 #include "cache.h"
 #include "champsim.h"
 #include "modules.h"
-#include "bakshalipour_framework.h"
+#include "prism_framework.h"
 #include <bits/stdc++.h>
 
 using namespace std;

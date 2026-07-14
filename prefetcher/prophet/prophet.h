@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "bakshalipour_framework.h"
+#include "prism_framework.h"
 #include "cache.h"
 #include "champsim.h"
 
@@ -32,36 +32,6 @@
 #define ENABLE_MRB true
 
 class prophet;
-
-struct SingleMetaEntry {
-  uint64_t correlatedAddr;
-  SatCounter8 counter;
-
-  SingleMetaEntry(unsigned bits) : correlatedAddr(0), counter(bits) {}
-};
-
-struct MetaEntry : public TaggedEntry {
-  /** group of stides */
-  std::vector<SingleMetaEntry> entries;
-  bool used;
-  uint64_t pc;
-  long long touch_time;
-  MetaEntry() : TaggedEntry(), entries(1, 1), used(false), pc(0), touch_time(0) {};
-  MetaEntry(size_t num_strides, unsigned counter_bits) : TaggedEntry(), entries(num_strides, counter_bits), used(false), pc(0), touch_time(0) {}
-
-  /** Reset the entries to their initial values */
-  void invalidate() override
-  {
-    TaggedEntry::invalidate();
-    used = false;
-    pc = 0;
-    touch_time = 0;
-    for (auto& entry : entries) {
-      entry.correlatedAddr = 0;
-      entry.counter.reset();
-    }
-  }
-};
 
 struct TrainEntry {
   TrainEntry()
@@ -220,7 +190,7 @@ public:
   int globalDegree = GLOBAL_DEGREE;
 #endif
   bool disablePF = false;
-  std::string benchmark;
+  std::string trace_path;
   bool enableInsertFilter = true;
   bool enablePGLRU = true;
   std::map<uint64_t, int> profileReplTable;
@@ -255,12 +225,12 @@ public:
     MT_lookup_reqs = 0;
     MT_lookup_returns = 0;
 
-      rb_read_n = 0;
-      rb_write_n = 0;
-      md_read_n = 0;
-      md_write_n = 0;
-      tu_read_n = 0;
-      tu_write_n = 0;
+    rb_read_n = 0;
+    rb_write_n = 0;
+    md_read_n = 0;
+    md_write_n = 0;
+    tu_read_n = 0;
+    tu_write_n = 0;
 
     warmup_reset = true;
   }
@@ -285,28 +255,19 @@ public:
   std::ofstream hint_file;
   bool warmup_complete = false;
 
-  std::string toProfilePath(const std::string& full_path)
+  std::string getTraceName(const std::string& full_path)
   {
+    // this function is to extract trace name from the input trace path
     size_t last_slash = full_path.find_last_of('/');
     if (last_slash == std::string::npos) {
       return "";
     }
-    // 1. 找到最后一个 '/' 的位置，分离目录和文件名
+    // 1. find the last '/'
     std::string dir_part = full_path.substr(0, last_slash);
     std::string file_part = full_path.substr(last_slash + 1);
-    // 2. 从 dir_part 中提取最后一级目录名（即 traces-spec2017）
-    size_t second_last_slash = dir_part.find_last_of('/');
-    std::string trace_dir = (second_last_slash == std::string::npos) ? dir_part : dir_part.substr(second_last_slash + 1);
-    // 3. 去掉 "traces-" 前缀，得到 "spec2017"
-    const std::string prefix = "traces-";
-    std::string suite;
-    if (trace_dir.substr(0, prefix.size()) == prefix) {
-      suite = trace_dir.substr(prefix.size());
-    }
-    // 4. 从 file_part 中移除最后两个扩展名（.champsimtrace.xz）
+    // 2.
     size_t last_dot = file_part.rfind('.');
     if (last_dot == std::string::npos) {
-      // 没有点，整个作为 base_name
       return "";
     }
     size_t second_last_dot = file_part.rfind('.', last_dot - 1);
@@ -314,15 +275,35 @@ public:
 
     return base_name;
   }
+
+  std::string getTraceDir(const std::string& full_path)
+  {
+    // this function is to extract trace dir from the input trace path
+    size_t last_slash = full_path.find_last_of('/');
+    if (last_slash == std::string::npos) {
+      return "";
+    }
+    std::string dir_part = full_path.substr(0, last_slash);
+
+    last_slash = dir_part.find_last_of('/');
+    if (last_slash == std::string::npos) {
+      return "";
+    }
+    dir_part = dir_part.substr(0, last_slash);
+
+    return dir_part;
+  }
+
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
-    
-    benchmark = champsim::global_trace_array[champsim::cur_cpu];
-    std::cout<<"cpu = " << champsim::cur_cpu << ", tracename = " << toProfilePath(benchmark) << std::endl;
+
+    trace_path = champsim::global_trace_array[champsim::cur_cpu];
+    std::string trace_dir = getTraceDir(trace_path);
+    std::cout << "cpu = " << champsim::cur_cpu << ", tracename = " << getTraceName(trace_path) << std::endl;
     champsim::cur_cpu++;
 #ifdef ELABORATE_LOG
-        log_file_name = "./" + toProfilePath(benchmark) + ".txt";
+    log_file_name = "./" + getTraceName(trace_path) + ".txt";
     cout << log_file_name << endl;
     logfile.open(log_file_name);
 #endif
@@ -335,7 +316,7 @@ public:
       metaTable = new ProphetMetaTable(META_TABLE_SIZE, 12);
       metaTable->setpp(this);
 
-      hint_file_name = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(benchmark) + ".txt";
+      hint_file_name = trace_dir + "/hint/" + getTraceName(trace_path) + ".txt";
       cout << "hint file: " << hint_file_name << endl;
       hint_file.open(hint_file_name);
       if (!hint_file) {
@@ -343,8 +324,7 @@ public:
         assert(false);
       }
     } else {
-      std::string trace_path(benchmark);
-      std::string file_name = "/mnt/data/lyq/exprlog/hint/" + toProfilePath(trace_path) + ".txt";
+      std::string file_name = trace_dir + "/hint/" + getTraceName(trace_path) + ".txt";
       std::ifstream pc_file(file_name);
       if (!pc_file) {
         std::cerr << "Unable to open: " << file_name << endl;

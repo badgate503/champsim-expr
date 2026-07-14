@@ -12,49 +12,29 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include "bakshalipour_framework.h"
+#include "prism_framework.h"
 #include "cache.h"
 #include "champsim.h"
 
+#ifndef ABLATION_STUDY
 #define PC_TRIGGER_PREFETCHING
-#define PCQ_SIZE 8
-#define PC_META_TABLE_SIZE (N_LLC_SET * 1 * 12)
-#define PC_META_TABLE_ASSOC 12
-
-#define BMP_RESIZE
-#define RESIZE_SAMPLE_WINDOW 100000
-#define SAMPLE_INTERVAL 10000000
-#define K_AGGR 1.5
-#define K_CONS 1.5
-#define DYNAMIC_PARTITIONING true
-
 #define TG_PREFETCHING
-
+#define BMP_RESIZE
 #define INSERTION_POLICY
 #define REPLACEMENT_POLICY
+#endif
 
 #ifdef TG_PREFETCHING
 #define DEFAULT_LOOKAHEAD 2
 #define DEFAULT_DEGREE 3
 #define DYNAMIC_DEGREE
-#define T_ACC_OFF 0.05
 #define T_ACC_LOW 0.15
 #define T_ACC_HIGH 0.75
-#define T_LATE 0.10
-#define T_BW_OFF 14  // max = 15
-#define T_BW_HIGH 12
-#define T_BW_MID 8
 #define PREFETCH_FILTER
-// #define MULTI_LEVEL_PREFETCH
 #else
 #define DEFAULT_LOOKAHEAD 0
 #define DEFAULT_DEGREE 1
 #endif
-
-#define PC_TABLE_SIZE 512
-#define PC_TABLE_ASSOC 16
-#define PC_TABLE_TAG_WIDTH 12
 
 #ifdef BMP_RESIZE
 #define INIT_WAY_MARKOV 8
@@ -62,18 +42,29 @@
 #define INIT_WAY_MARKOV 4
 #endif
 
-#define MIN_WAY_MARKOV 1
-#define MAX_WAY_MARKOV 8
-#define META_TABLE_SIZE (N_LLC_SET * 12 * INIT_WAY_MARKOV)
-#define META_TABLE_ASSOC 12
+#define PC_TABLE_SIZE 512
+#define PC_TABLE_ASSOC 16
+#define PC_TABLE_TAG_WIDTH 12
+
+// for PC-Triggerd Prefetching
+#define PCQ_SIZE 8
+#define PC_META_TABLE_SIZE (N_LLC_SET * 1 * 12)
+#define PC_META_TABLE_ASSOC 12
 
 #define PF_FILTER_SIZE 256
 #define PF_FILTER_ASSOC 8
 #define PF_FILTER_TAG_WIDTH 10
 
-// #define CONFLICT_PREFETCHING
-// #define CONFLICT_META_TABLE_SIZE (N_LLC_SET * 1 * 12)
-// #define CONFLICT_META_TABLE_ASSOC 12
+#define MIN_WAY_MARKOV 1
+#define MAX_WAY_MARKOV 8
+#define META_TABLE_SIZE (N_LLC_SET * 12 * INIT_WAY_MARKOV)
+#define META_TABLE_ASSOC 12
+
+// for BMP resize
+#define RESIZE_SAMPLE_WINDOW 100000
+#define SAMPLE_INTERVAL 10000000
+#define K_AGGR 1.5
+#define K_CONS 1.5
 
 class prism;
 
@@ -99,6 +90,9 @@ class prismMetaTable : public LRUSetAssociativeCache<MetaTableEntry>
 public:
   std::unordered_map<uint64_t, std::set<uint64_t>> reverse_metatable;
   prism* prefetcher;
+  int waysForMarkov;
+  int alloc_sets;
+  int max_sets;
 
   prismMetaTable(int size, int num_ways) : Super(size, num_ways) {}
 
@@ -106,6 +100,15 @@ public:
 
   MetaTableEntry* find(uint64_t key)
   {
+    // uint64_t index = key % this->alloc_sets;
+    // uint64_t tag = key / this->max_sets;
+    // auto& cam = cams[index];
+    // if (cam.find(tag) == cam.end())
+    //   return nullptr;
+    // int way = cam[tag];
+    // Entry& entry = this->entries[index][way];
+    // // assert(entry.tag == tag && entry.valid);
+    // return &entry;
     Entry* entry = Super::find(key);
     if (!entry) {
       return nullptr;
@@ -170,7 +173,6 @@ public:
 class prism : public champsim::modules::prefetcher
 {
 public:
-  // BaseTags* cachetags;
   CACHE* llc_cache = NULL;
   int debug_level = 0;
 
@@ -209,7 +211,7 @@ public:
     uint64_t markov_write[2];
     uint64_t pat_read[2];
     uint64_t pat_write[2];
-    void reset(){ *this = {};}
+    void reset() { *this = {}; }
   } energy_stats;
 
   int pat_lookup_times[7] = {0, 0, 0, 0, 0, 0, 0};
@@ -217,7 +219,6 @@ public:
   struct PCTableEntry {
     uint64_t lookahead;
     int degree;
-    uint64_t latePrefetchCount;
     uint64_t usefulPrefetchCount;
     uint64_t issuedPrefetchCount;
     uint64_t hitCount;
@@ -225,7 +226,7 @@ public:
     deque<uint64_t> addrHistory;
 
     PCTableEntry(uint64_t _last_addr = 0, bool cache_hit = false)
-        : lookahead(DEFAULT_LOOKAHEAD), degree(DEFAULT_DEGREE), latePrefetchCount(0), usefulPrefetchCount(0), issuedPrefetchCount(0),
+        : lookahead(DEFAULT_LOOKAHEAD), degree(DEFAULT_DEGREE), usefulPrefetchCount(0), issuedPrefetchCount(0),
           hitCount(cache_hit ? 1 : 0), modified(false)
     {
       addrHistory.push_front(_last_addr);
@@ -233,37 +234,17 @@ public:
     void update_counter(uint64_t pc)
     {
 #ifdef DYNAMIC_DEGREE
-      float laterate = 0;
       float accuracy = 0;
-      if (latePrefetchCount + usefulPrefetchCount)
-        laterate = 1.0 * latePrefetchCount / (latePrefetchCount + usefulPrefetchCount);
-      if ((latePrefetchCount + issuedPrefetchCount) != 0)
-        accuracy = 1.0 * (latePrefetchCount + usefulPrefetchCount) / (latePrefetchCount + issuedPrefetchCount);
+      //  Here we ignore late prefetches when calculating accuracy, 
+      //  since tracking late prefetches incurs additional overhead
+      if (issuedPrefetchCount != 0)
+        accuracy = 1.0 * usefulPrefetchCount / issuedPrefetchCount;
 
       int delta_degree = 0;
 
-      // if (accuracy > T_ACC_HIGH) {
-      //   if (laterate > T_LATE) {
-      //     delta_degree = 2;
-      //   } else {
-      //     delta_degree = 1;
-      //   }
-      // } else if (accuracy <= T_ACC_OFF) {
-      //   delta_degree = -degree;
-      // } else if (accuracy <= T_ACC_LOW) {
-      //   if (degree > 1)
-      //     delta_degree = -1;
-      // } else {
-      //   if (laterate > T_LATE)
-      //     delta_degree = 1;
-      // }
-
       if (accuracy <= T_ACC_LOW) {
         delta_degree = -1;
-      } else {
-        if (laterate > T_LATE)
-          delta_degree += 1;
-        if (accuracy > T_ACC_HIGH)
+      } else if (accuracy > T_ACC_HIGH){
           delta_degree += 1;
       }
 
@@ -274,7 +255,6 @@ public:
         degree = 6;
 #endif
 
-      latePrefetchCount = 0;
       usefulPrefetchCount = 0;
       issuedPrefetchCount = 0;
     };
@@ -310,7 +290,6 @@ public:
 
   void update_pc_metatable_size()
   {
-    // if (!init_resized) {
     if (inserted_PC >= 0.25 * RESIZE_SAMPLE_WINDOW) {
       enable_PC_Trigger_prefetching = true;
       waysForPCTable = 2;
@@ -321,16 +300,7 @@ public:
       enable_PC_Trigger_prefetching = false;
       waysForPCTable = 0;
     }
-    // }
-    // else {
-    //   if (waysForPCTable < 2 && inserted_PC >= 4096 * 12 * 2) {
-    //     enable_PC_Trigger_prefetching = true;
-    //     waysForPCTable = 2;
-    //   } else if (waysForPCTable < 1 && inserted_PC >= 4096 * 12 * 1) {
-    //     enable_PC_Trigger_prefetching = true;
-    //     waysForPCTable = 1;
-    //   }
-    // }
+    // waysForPCTable = 2;
 
     if (waysForPCTable > 0 && waysForPCTable != origin_waysForPCTable) {
       SRRIPSetAssociativeCache<MetaTableEntry>* resized_pcMetaTable =
@@ -363,17 +333,6 @@ public:
     inserted_PC = 0;
     fail_entry_init = 0;
   }
-
-#ifdef CONFLICT_PREFETCHING
-  SRRIPSetAssociativeCache<MetaTableEntry>* conflictMetaTable =
-      new SRRIPSetAssociativeCache<MetaTableEntry>(CONFLICT_META_TABLE_SIZE, CONFLICT_META_TABLE_ASSOC);
-  // stat
-  uint64_t conflict_table_lookups = 0;
-  uint64_t conflict_table_hits = 0;
-  uint64_t conflict_table_issued_prefetches = 0;
-  uint64_t conflict_table_accurate_prefetches = 0;
-  std::set<uint64_t> conflict_table_prefetches;
-#endif
 
   // for main metadata resize
   uint64_t resize_useful_prefetch = 0;
@@ -412,9 +371,6 @@ public:
 
     if (large_markov) {
       temp_resize_score = K_AGGR * temp_llc_hit_rate - temp_useful_prefetch_rate;
-      if (!DYNAMIC_PARTITIONING && init_resized) {
-        temp_resize_score = 0;
-      }
       if (temp_resize_score > 0) {
         waysForCache = 16 - MIN_WAY_MARKOV;
         waysForMarkov = MIN_WAY_MARKOV;
@@ -422,9 +378,6 @@ public:
       }
     } else {
       temp_resize_score = K_CONS * temp_llc_hit_rate - temp_useful_prefetch_rate;
-      if (!DYNAMIC_PARTITIONING && init_resized) {
-        temp_resize_score = 0;
-      }
       if (temp_resize_score < 0) {
         waysForCache = 16 - MAX_WAY_MARKOV;
         waysForMarkov = MAX_WAY_MARKOV;
@@ -448,16 +401,16 @@ public:
 
   void resize_cache()
   {
-    if ((waysForCache + waysForMarkov + waysForPCTable) != 16) {
-      int delta = waysForCache + waysForMarkov + waysForPCTable - 16;
-      if (waysForMarkov > delta) {
-        waysForMarkov -= delta;
-      } else {
-        waysForMarkov = 1;
-        large_markov = false;
-        waysForCache = 16 - waysForMarkov - waysForPCTable;
-      }
-    }
+    // if ((waysForCache + waysForMarkov + waysForPCTable) != 16) {
+    //   int delta = waysForCache + waysForMarkov + waysForPCTable - 16;
+    //   if (waysForMarkov > delta) {
+    //     waysForMarkov -= delta;
+    //   } else {
+    //     // here, waysForMarkov = 1
+    //     waysForCache = 16 - waysForMarkov - waysForPCTable;
+    //   }
+    // }
+    waysForCache = 16 - waysForMarkov - waysForPCTable;
 
     llc_cache->set_available_ways(waysForCache);
 
@@ -485,7 +438,7 @@ public:
       mainMetaTable = resized_metadata_table;
       mainMetaTable->setpp(this);
       cout << "Resize markov table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
-    }else {
+    } else {
       cout << "Donot Resize markov table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
     }
 
@@ -513,8 +466,8 @@ public:
     PCM_useful_prefetches = 0;
     PCM_useless_prefetches = 0;
 
-    fail_entry_init = 0;
     inserted_PC = 0;
+    fail_entry_init = 0;
 
     energy_stats.reset();
     memset(pat_lookup_times, 0, sizeof(pat_lookup_times));
@@ -522,48 +475,12 @@ public:
     warmup_reset = true;
   }
 
-  std::string ExtractWorkloadName(const std::string& full_path)
-  {
-    // input: /path/to/benchmark/tracefile
-    // output: workload name
-    size_t last_slash = full_path.find_last_of('/');
-    if (last_slash == std::string::npos) {
-      return "";
-    }
-
-    std::string dir_part = full_path.substr(0, last_slash);
-    std::string file_part = full_path.substr(last_slash + 1);
-
-    size_t second_last_slash = dir_part.find_last_of('/');
-    std::string trace_dir = (second_last_slash == std::string::npos) ? dir_part : dir_part.substr(second_last_slash + 1);
-
-    const std::string prefix = "traces-";
-    std::string suite;
-    if (trace_dir.substr(0, prefix.size()) == prefix) {
-      suite = trace_dir.substr(prefix.size());
-    }
-
-    size_t last_dot = file_part.rfind('.');
-    if (last_dot == std::string::npos) {
-      return "";
-    }
-    size_t second_last_dot = file_part.rfind('.', last_dot - 1);
-    std::string base_name = (second_last_dot == std::string::npos) ? file_part.substr(0, last_dot) : file_part.substr(0, second_last_dot);
-
-    return base_name;
-  }
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
     mainMetaTable->setpp(this);
     llc_cache->set_available_ways(waysForCache);
     cout << "Alloc " << waysForCache << " ways for cache" << endl;
-
-#ifdef ELABORATE_LOG
-    log_file_name = "./" + ExtractWorkloadName(champsim::global_trace_name) + ".txt";
-    cout << log_file_name << endl;
-    logfile.open(log_file_name);
-#endif
   }
 
   int issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree);

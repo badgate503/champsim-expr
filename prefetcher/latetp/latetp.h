@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "bakshalipour_framework.h"
+#include "prism_framework.h"
 #include "cache.h"
 #include "champsim.h"
 
