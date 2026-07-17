@@ -194,10 +194,6 @@ int prophet::issue_metatable(ProphetMetaTable* metaTable, uint64_t lookup, uint6
       find_success = true;
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
         addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
-#ifdef ELABORATE_LOG
-        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MT " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr)
-                << std::endl;
-#endif
         issued++;
       }
       lookup = candidate->correlatedAddr;
@@ -222,10 +218,6 @@ int prophet::issue_mrbtable(ProphetMRBTable* mrbTable, uint64_t lookup, uint64_t
     if (candidate->correlatedAddr != 0) {
       lookup = candidate->correlatedAddr;
       if (!isAlreadyInQueue(addresses, candidate->correlatedAddr << LOG2_BLOCK_SIZE)) {
-#ifdef ELABORATE_LOG
-        logfile << std::dec << llc_cache->current_cycle() << " ISSUE MRB " << std::hex << pc << " " << (lookup) << " " << (candidate->correlatedAddr)
-                << std::endl;
-#endif
         addresses.push_back(candidate->correlatedAddr << LOG2_BLOCK_SIZE);
         issued++;
       }
@@ -239,39 +231,6 @@ void prophet::outPrefetcherPGOInfo() {}
 uint32_t prophet::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
                                            uint32_t metadata_in, std::string latepf)
 {
-#ifdef ELABORATE_LOG
-  if (!warmup_complete && !llc_cache->warmup) {
-    warmup_complete = true;
-    logfile << "WARMUP COMPLETE" << std::endl;
-  }
-  if (!cache_hit) { // L2 CACHE MISS
-    if (ip.to<uint64_t>() != 0) {
-      champsim::block_number pf_addr{addr};
-      // std::ofstream ofs(out_file, std::ios::app);  // append mode
-      uint64_t last_addr = get_last(ip.to<uint64_t>());
-      std::set<uint64_t> triggers = get_triggers(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
-
-      logfile << std::dec << llc_cache->current_cycle() << " MISS " << latepf << " " << std::hex << pf_addr << " " << ip << " " << last_addr;
-      for (uint64_t t : triggers) {
-        logfile << " " << t;
-      }
-      logfile << std::endl;
-    }
-  } else {
-    if (ip.to<uint64_t>() != 0) {
-      champsim::block_number pf_addr{addr};
-      // std::ofstream ofs(out_file, std::ios::app);  // append mode
-      uint64_t last_addr = get_last(ip.to<uint64_t>());
-      std::set<uint64_t> triggers = get_triggers(addr.to<uint64_t>() >> LOG2_BLOCK_SIZE);
-
-      logfile << std::dec << llc_cache->current_cycle() << " HIT " << std::hex << pf_addr << " " << ip << " " << last_addr;
-      for (uint64_t t : triggers) {
-        logfile << " " << t;
-      }
-      logfile << std::endl;
-    }
-  }
-#endif
   if (!warmup_reset && !llc_cache->warmup) {
     reset_stat_counters();
   }
@@ -300,10 +259,6 @@ uint32_t prophet::prefetcher_cache_fill(champsim::address addr, long set, long w
 
 void prophet::prefetcher_final_stats()
 {
-#ifdef ELABORATE_LOG
-  logfile.close();
-#endif
-
   cout << "MT_lookups " << MT_lookups << endl;
   cout << "MT_hits " << MT_hits << endl;
   cout << "MT_lookup_reqs " << MT_lookup_reqs << endl;
@@ -363,20 +318,7 @@ bool ProphetMetaTable::insert(uint64_t key, const ProphetMetaTableEntry& data, u
   bool ret = false;
   if (victim_entry.valid) {
     reverse_metatable[victim_entry.data.correlatedAddr].erase(victim_entry.key);
-#ifdef ELABORATE_LOG
-    std::string reason;
-    if (victim_entry.tag != tag) {
-      reason = "CAPACITY";
-    } else {
-      reason = "CONFLICT";
-    }
-    pp->logfile << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " "
-                << victim_entry.data.correlatedAddr << std::endl;
-#endif
     ret = true;
   }
-#ifdef ELABORATE_LOG
-  pp->logfile << std::dec << pp->llc_cache->current_cycle() << " ADD " << std::hex << key << " " << data.correlatedAddr << std::endl;
-#endif
   return ret;
 }

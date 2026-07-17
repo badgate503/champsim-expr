@@ -123,7 +123,7 @@ def plot_metrics_grouped(csv_path, out_dir):
     fig.legend(handles, labels, ncol=min(6, n_pf), fontsize=8, loc="upper center", bbox_to_anchor=(0.5, 1), frameon=False)
     plt.tight_layout(rect=[0, 0.03, 1, 1])
 
-    out_pdf = os.path.join(out_dir, "acc_time_traffic.pdf")
+    out_pdf = os.path.join(out_dir, "Fig11-metrics.pdf")
     fig.savefig(out_pdf, bbox_inches="tight", pad_inches=0.01)
     print(f"Saved: {out_pdf}")
 

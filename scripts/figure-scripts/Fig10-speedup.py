@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """Plot IPCI (Speedup) for all Prefetchers across Sets from average.csv.
 
@@ -90,7 +91,7 @@ def plot_ipci(csv_path, out_dir):
     fig.legend(handles, labels, ncol=min(6, n_pf), fontsize=8, loc='upper center', bbox_to_anchor=(0.55, 1.02), frameon=False)
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
-    out_pdf = os.path.join(out_dir, "single-core-ipci.pdf")
+    out_pdf = os.path.join(out_dir, "Fig10-speedup.pdf")
     fig.savefig(out_pdf, bbox_inches="tight", pad_inches=0.01)
     print(f"Saved: {out_pdf}")
 

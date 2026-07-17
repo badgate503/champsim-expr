@@ -100,6 +100,12 @@ PF_LIST = [
     # "pctp144k",
     # "pctp192k",
 
+    # "pctp_0way",
+    # "pctp_1way",
+    # "pctp_2way",
+    "prism_ae",
+    "prism_ae_0.1",
+
     # "conftp-inf",
     # "conftp1way",
     # "conftp2way",

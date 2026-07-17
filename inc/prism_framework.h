@@ -47,8 +47,8 @@ public:
   Entry* erase(uint64_t key)
   {
     Entry* entry = this->find(key);
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     auto& cam = cams[index];
     // int num_erased = cam.erase(tag);
     cam.erase(tag);
@@ -69,8 +69,8 @@ public:
       entry->data = data;
       return old_entry;
     }
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     vector<Entry>& set = this->entries[index];
     int victim_way = -1;
     for (int i = 0; i < this->num_ways; i += 1)
@@ -96,8 +96,8 @@ public:
 
   Entry* find(uint64_t key)
   {
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     auto& cam = cams[index];
     if (cam.find(tag) == cam.end())
       return nullptr;
@@ -109,8 +109,8 @@ public:
 
   int find_way(uint64_t key)
   {
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     auto& cam = cams[index];
     if (cam.find(tag) == cam.end())
       return -1;
@@ -123,8 +123,15 @@ public:
   void set_debug_level(int debug_level) { this->debug_level = debug_level; }
 
   /**
-   * @return The way of the selected victim
+   * @return The set index
    */
+  virtual uint64_t get_index(uint64_t key) { return key % this->num_sets; }
+
+  /**
+   * @return The tag
+   */
+  virtual uint64_t get_tag(uint64_t key) { return key / this->num_sets; }
+
   virtual int select_victim(uint64_t index)
   {
     /* random eviction policy if not overriden */
@@ -182,16 +189,16 @@ public:
 
   void touch(uint64_t key)
   {
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
     freq[index][way]++;
   }
 
   void set_default(uint64_t key)
   {
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
     freq[index][way] = 0;
   }
@@ -263,8 +270,8 @@ protected:
 
   uint64_t* get_lru(uint64_t key)
   {
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     // assert(this->cams[index].count(tag) == 1);
     int way = this->cams[index][tag];
     return &this->lru[index][way];
@@ -332,8 +339,8 @@ public:
   void touch(uint64_t key, uint64_t ip)
   {
     update_repl(key, ip);
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
     this->rrpv[index][way] = 0;
   }
@@ -341,8 +348,8 @@ public:
   void set_default(uint64_t key, uint64_t ip)
   { // for insertion
     update_repl(key, ip);
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
     this->rrpv[index][way] = MAX_RRPV - 1;
     if (shct[(ip & 0xFFFFFFFF) % SHCT_PRIME] == SHCT_MAX) {
@@ -352,8 +359,8 @@ public:
 
   void set_rrpv(uint64_t key, uint64_t rrpv_value)
   { // for insertion
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
     this->rrpv[index][way] = rrpv_value;
   }
@@ -438,24 +445,24 @@ public:
 
   void set_default(uint64_t key)
   { // for insertion
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
     this->rrpv[index][way] = MAX_RRPV - 1;
   }
 
   void set_rrpv(uint64_t key, uint64_t rrpv_value)
   { // for insertion
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
     this->rrpv[index][way] = rrpv_value;
   }
 
   void decrement(uint64_t key)
   { // for touch
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
 #ifdef TOUCH_DECREMENT
     if (this->rrpv[index][way] > 0)
@@ -474,7 +481,8 @@ class BRRIPSetAssociativeCache : public SetAssociativeCache<T>
   typedef SetAssociativeCache<T> Super;
 
 public:
-  BRRIPSetAssociativeCache(int size, int num_ways, int debug_level = 0) : Super(size, num_ways, debug_level), rrpv(this->num_sets, vector<uint64_t>(num_ways)), bip_counter(0)
+  BRRIPSetAssociativeCache(int size, int num_ways, int debug_level = 0)
+      : Super(size, num_ways, debug_level), rrpv(this->num_sets, vector<uint64_t>(num_ways)), bip_counter(0)
   {
   }
 
@@ -500,30 +508,30 @@ public:
 
   void set_default(uint64_t key)
   { // for insertion
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
     bip_counter++;
-    if (bip_counter >= 32){
+    if (bip_counter >= 32) {
       this->rrpv[index][way] = MAX_RRPV - 1;
       bip_counter = 0;
-    }else{
+    } else {
       this->rrpv[index][way] = MAX_RRPV;
     }
   }
 
   void set_rrpv(uint64_t key, uint64_t rrpv_value)
   { // for insertion
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
     this->rrpv[index][way] = rrpv_value;
   }
 
   void decrement(uint64_t key)
   { // for touch
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
 #ifdef TOUCH_DECREMENT
     if (this->rrpv[index][way] > 0)
@@ -575,7 +583,7 @@ public:
   */
   int which_set(uint64_t key)
   { // totally 32768 sets, select 2 leaders from each 512 sets
-    uint64_t index = key % this->num_sets;
+    uint64_t index = this->get_index(key);
     if ((index & mask) == 0)
       return 1; // srrip leader
     else if ((index & mask) == 1)
@@ -604,8 +612,8 @@ public:
 
   void update_replacement(uint64_t key, bool isSRRIP)
   {
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
     if (isSRRIP) {
       this->rrpv[index][way] = MAX_RRPV - 1;
@@ -621,8 +629,8 @@ public:
 
   void decrement(uint64_t key)
   { // for touch
-    uint64_t index = key % this->num_sets;
-    uint64_t tag = key / this->num_sets;
+    uint64_t index = this->get_index(key);
+    uint64_t tag = this->get_tag(key);
     int way = this->cams[index][tag];
 #ifdef TOUCH_DECREMENT
     if (this->rrpv[index][way] > 0)

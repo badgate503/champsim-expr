@@ -6,7 +6,9 @@ _configuration.mk
 
 bin*/
 
-morton_filter/
+scripts/comp_errors/
+scripts/figure-out/
+scripts/results/
 
 **/*.o
 **/*.d

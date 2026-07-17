@@ -1,3 +1,7 @@
+/*
+  Baseline with infinite storage, i.e., infinite training table and Markov table
+*/
+
 #ifndef INFTABLE
 #define INFTABLE
 
@@ -17,7 +21,6 @@
 #include "cache.h"
 #include "champsim.h"
 
-#define BASE_TRIGGER_NUM 1
 // #define MISS_CLASS_LOG
 
 #define PC_TABLE_SIZE 512
@@ -81,9 +84,7 @@ public:
   int globalDegree = GLOBAL_DEGREE;
 
   std::string benchmark;
-
   uint32_t numEntriesinTable = 0;
-  int waysForCache = 8;
 
   // stat
   uint64_t meta_table_lookups = 0;
@@ -103,32 +104,24 @@ public:
   std::ofstream logfile;
   bool warmup_complete = false;
 
-  std::string toProfilePath(const std::string& full_path)
+  std::string getTraceName(const std::string& full_path)
   {
+    // this function is to extract trace name from the input trace path
     size_t last_slash = full_path.find_last_of('/');
     if (last_slash == std::string::npos) {
       return "";
     }
-    // 1. 找到最后一个 '/' 的位置，分离目录和文件名
+    // 1. find the last '/'
     std::string dir_part = full_path.substr(0, last_slash);
     std::string file_part = full_path.substr(last_slash + 1);
-    // 2. 从 dir_part 中提取最后一级目录名（即 traces-spec2017）
-    size_t second_last_slash = dir_part.find_last_of('/');
-    std::string trace_dir = (second_last_slash == std::string::npos) ? dir_part : dir_part.substr(second_last_slash + 1);
-    // 3. 去掉 "traces-" 前缀，得到 "spec2017"
-    const std::string prefix = "traces-";
-    std::string suite;
-    if (trace_dir.substr(0, prefix.size()) == prefix) {
-      suite = trace_dir.substr(prefix.size());
-    }
-    // 4. 从 file_part 中移除最后两个扩展名（.champsimtrace.xz）
+    // 2.
     size_t last_dot = file_part.rfind('.');
     if (last_dot == std::string::npos) {
-      // 没有点，整个作为 base_name
       return "";
     }
     size_t second_last_dot = file_part.rfind('.', last_dot - 1);
     std::string base_name = (second_last_dot == std::string::npos) ? file_part.substr(0, last_dot) : file_part.substr(0, second_last_dot);
+
     return base_name;
   }
 
@@ -169,7 +162,7 @@ public:
     cout << "Alloc " << INFT_LLC_WAY << " ways for LLC" << endl;
 #ifdef MISS_CLASS_LOG
     benchmark = champsim::global_trace_name;
-    log_file_name = "./" + toProfilePath(benchmark) + ".txt";
+    log_file_name = "./" + getTraceName(benchmark) + ".txt";
     cout << log_file_name << endl;
     logfile.open(log_file_name);
 #endif

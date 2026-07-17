@@ -46,7 +46,6 @@ public:
     assert((size & (size - 1)) == 0);
   }
 
-  // 优先找 invalid line
   size_t getReplacementIndex() {
     for (size_t i = 0; i < ways; i++) {
       if (!cache[i].valid)
@@ -55,7 +54,6 @@ public:
 
     size_t node = 0;
     while (node < tree.size()) {
-      // 走 LRU 方向（MRU 的反方向）
       bool mru_right = tree[node];
       node = mru_right ? (2 * node + 1) : (2 * node + 2);
     }
@@ -68,7 +66,7 @@ public:
     while (node > 0) {
       size_t parent = (node - 1) / 2;
       bool is_right = (node == 2 * parent + 2);
-      tree[parent] = is_right; // 标记访问方向为 MRU
+      tree[parent] = is_right;
       node = parent;
     }
   }

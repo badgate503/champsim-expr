@@ -121,13 +121,9 @@ uint32_t baseline::prefetcher_cache_operate(champsim::address addr, champsim::ad
     /* Energy */
     training_unit_write++;
   } else {
-#ifdef BASE_TRIGGER_NUM
-    std::deque<uint64_t> temp(BASE_TRIGGER_NUM, 0);
-    pcTable->insert(pc, temp);
-#else
     std::deque<uint64_t> temp(1, 0);
     pcTable->insert(pc, temp);
-#endif
+
     pc_entry = pcTable->find(pc);
     /* Energy */
     training_unit_write++;
@@ -135,17 +131,6 @@ uint32_t baseline::prefetcher_cache_operate(champsim::address addr, champsim::ad
   pcTable->set_mru(pc);
 
   uint64_t lookup_key = block_addr;
-#if BASE_TRIGGER_NUM == 2
-  lookup_key ^= (pc_entry->data[0] << 5) ^ (pc_entry->data[0] >> 7);
-  lookup_key ^= lookup_key >> 16;
-#elif BASE_TRIGGER_NUM == 3
-  lookup_key ^= (pc_entry->data[0] << 5) ^ (pc_entry->data[0] >> 7) ^ (pc_entry->data[1] << 11) ^ (pc_entry->data[1] >> 13);
-  lookup_key ^= lookup_key >> 16;
-#elif BASE_TRIGGER_NUM == 4
-  lookup_key ^= (pc_entry->data[0] << 5) ^ (pc_entry->data[0] >> 7) ^ (pc_entry->data[1] << 11) ^ (pc_entry->data[1] >> 13) ^ (pc_entry->data[2] << 17)
-                ^ (pc_entry->data[2] >> 19);
-  lookup_key ^= lookup_key >> 16;
-#endif
 
   baselineMetaTableEntry* metadata = metaTable->find(lookup_key);
   if (metadata) {
@@ -162,17 +147,6 @@ uint32_t baseline::prefetcher_cache_operate(champsim::address addr, champsim::ad
   // 3.1 update the metaTable
   if (last_addr != 0 && last_addr != block_addr) {
     uint64_t insert_key = last_addr;
-#if BASE_TRIGGER_NUM == 2
-    insert_key ^= (pc_entry->data[1] << 5) ^ (pc_entry->data[1] >> 7);
-    insert_key ^= insert_key >> 16;
-#elif BASE_TRIGGER_NUM == 3
-    insert_key ^= (pc_entry->data[1] << 5) ^ (pc_entry->data[1] >> 7) ^ (pc_entry->data[2] << 11) ^ (pc_entry->data[2] >> 13);
-    insert_key ^= insert_key >> 16;
-#elif BASE_TRIGGER_NUM == 4
-    lookup_key ^= (pc_entry->data[1] << 5) ^ (pc_entry->data[1] >> 7) ^ (pc_entry->data[2] << 11) ^ (pc_entry->data[2] >> 13) ^ (pc_entry->data[3] << 17)
-                  ^ (pc_entry->data[3] >> 19);
-    insert_key ^= insert_key >> 16;
-#endif
 
     baselineMetaTableEntry* last_meta = metaTable->find(insert_key);
 
@@ -210,18 +184,10 @@ uint32_t baseline::prefetcher_cache_operate(champsim::address addr, champsim::ad
   }
   if (!already_exist) {
     pc_entry->data.push_front(block_addr);
-#ifdef BASE_TRIGGER_NUM
-    if (pc_entry->data.size() > BASE_TRIGGER_NUM)
-      pc_entry->data.pop_back();
-#else
     if (pc_entry->data.size() > 1)
       pc_entry->data.pop_back();
-#endif
   }
 
-  
-
-  
   return metadata_in;
 }
 

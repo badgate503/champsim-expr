@@ -28,13 +28,12 @@ INTERVAL = 200_000_000
 parser = argparse.ArgumentParser()
 
 
-parser.add_argument("--prefetcher", "-p",nargs="+", required=True, help="选用的预取器名称")
-parser.add_argument("--traces", "-t", nargs="+", help="指定 trace 文件名单列表")
-parser.add_argument("--tracelist", "-l", nargs="*", type=str, help="指定某个 trace set（定义在 tracelist 文件中）")
-parser.add_argument("--output", "-o", help="重定向实验结果输出目录")
-parser.add_argument("--skip", "-s", action="store_true", help="对于已存在的输出文件的 trace，不重新跑；不指定则会覆盖之前的结果")
-parser.add_argument("--auto", "-a", action="store_true", help="是否跳过所有交互提示")
-parser.add_argument("--nproc", "-j", type=int, default=90, help="指定并行进程数")
+parser.add_argument("--prefetcher", "-p",nargs="+", required=True, help="Name(s) of the prefetcher(s) to run (e.g., baseline triangel prophet prism).")
+parser.add_argument("--traces", "-t", nargs="+", help="Name(s) of the trace(s) to run (e.g., bc-0 bc-12).")
+parser.add_argument("--tracelist", "-l", nargs="*", type=str, help="Name(s) of the trace Set(s) to run (e.g., ligra gap spec17 ml google).")
+parser.add_argument("--output", "-o", help="Directory to redirect experiment results to")
+parser.add_argument("--skip", "-s", action="store_true", help="Skip re-running those whose output files already exist; otherwise, overwrite previous results")
+parser.add_argument("--nproc", "-j", type=int, default=90, help="Number of parallel jobs to use")
 
 args = parser.parse_args()
 

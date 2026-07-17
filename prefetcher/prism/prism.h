@@ -12,9 +12,10 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "prism_framework.h"
+
 #include "cache.h"
 #include "champsim.h"
+#include "prism_framework.h"
 
 #ifndef ABLATION_STUDY
 #define PC_TRIGGER_PREFETCHING
@@ -24,58 +25,106 @@
 #define REPLACEMENT_POLICY
 #endif
 
+// for PC-Triggerd Prefetching
+#ifndef PCQ_SIZE
+#define PCQ_SIZE 8
+#endif
+#define MAX_WAY_PAT 2
+#define PAT_ASSOC 12
+#ifndef PAT_SIZE
+#define PAT_SIZE (N_LLC_SET * MAX_WAY_PAT * PAT_ASSOC)
+#endif
+
+// for Timeliness-Guaranteed Prefetching
 #ifdef TG_PREFETCHING
 #define DEFAULT_LOOKAHEAD 2
 #define DEFAULT_DEGREE 3
 #define DYNAMIC_DEGREE
+#ifndef T_ACC_LOW
 #define T_ACC_LOW 0.15
+#endif
+#ifndef T_ACC_HIGH
 #define T_ACC_HIGH 0.75
+#endif
 #define PREFETCH_FILTER
+#define PF_FILTER_SIZE 256
+#define PF_FILTER_ASSOC 8
+#define PF_FILTER_TAG_WIDTH 10
 #else
 #define DEFAULT_LOOKAHEAD 0
 #define DEFAULT_DEGREE 1
 #endif
 
+// for BMP resize
 #ifdef BMP_RESIZE
 #define INIT_WAY_MARKOV 8
 #else
 #define INIT_WAY_MARKOV 4
+#endif
+#define RESIZE_SAMPLE_WINDOW 100000
+#define SAMPLE_INTERVAL 10000000
+#ifndef K_AGGR
+#define K_AGGR 1.5
+#endif
+#ifndef K_CONS
+#define K_CONS 1.5
 #endif
 
 #define PC_TABLE_SIZE 512
 #define PC_TABLE_ASSOC 16
 #define PC_TABLE_TAG_WIDTH 12
 
-// for PC-Triggerd Prefetching
-#define PCQ_SIZE 8
-#define PC_META_TABLE_SIZE (N_LLC_SET * 1 * 12)
-#define PC_META_TABLE_ASSOC 12
-
-#define PF_FILTER_SIZE 256
-#define PF_FILTER_ASSOC 8
-#define PF_FILTER_TAG_WIDTH 10
-
 #define MIN_WAY_MARKOV 1
 #define MAX_WAY_MARKOV 8
-#define META_TABLE_SIZE (N_LLC_SET * 12 * INIT_WAY_MARKOV)
 #define META_TABLE_ASSOC 12
+#define META_TABLE_SIZE (N_LLC_SET * MAX_WAY_MARKOV * META_TABLE_ASSOC)
 
-// for BMP resize
-#define RESIZE_SAMPLE_WINDOW 100000
-#define SAMPLE_INTERVAL 10000000
-#define K_AGGR 1.5
-#define K_CONS 1.5
 
 class prism;
 
 uint64_t hash_xor(uint64_t key);
-uint8_t get_dram_bw();
 
 struct MetaTableEntry {
 public:
   uint64_t target_addr;
   bool confident;
   MetaTableEntry(uint64_t addr = 0) : target_addr(addr), confident(false) {};
+};
+
+class prismPCAddressTable : public SRRIPSetAssociativeCache<MetaTableEntry>
+{
+  typedef SRRIPSetAssociativeCache<MetaTableEntry> Super;
+
+public:
+  int alloc_sets;
+  int max_sets;
+
+  prismPCAddressTable(int size, int num_ways) : alloc_sets(0), max_sets(MAX_WAY_PAT * N_LLC_SET), Super(size, num_ways) {}
+
+  void resize(int waysForPAT) { alloc_sets = waysForPAT * N_LLC_SET; }
+
+  MetaTableEntry* find(uint64_t key)
+  {
+    Entry* entry = Super::find(key);
+    if (!entry) {
+      return nullptr;
+    }
+    Super::touch(key);
+    return &(entry->data);
+  }
+
+  void insert(uint64_t key, const MetaTableEntry& data)
+  {
+    Entry entry = Super::insert(key, data);
+    if (entry.valid && entry.key != key) {
+      Super::set_default(key);
+    } else {
+      Super::touch(key);
+    }
+  }
+
+  virtual uint64_t get_index(uint64_t key) { return key % this->alloc_sets; }
+  virtual uint64_t get_tag(uint64_t key) { return key / this->max_sets; }
 };
 
 #ifdef REPLACEMENT_POLICY
@@ -88,27 +137,15 @@ class prismMetaTable : public LRUSetAssociativeCache<MetaTableEntry>
   typedef LRUSetAssociativeCache<MetaTableEntry> Super;
 #endif
 public:
-  std::unordered_map<uint64_t, std::set<uint64_t>> reverse_metatable;
-  prism* prefetcher;
-  int waysForMarkov;
   int alloc_sets;
   int max_sets;
 
-  prismMetaTable(int size, int num_ways) : Super(size, num_ways) {}
+  prismMetaTable(int size, int num_ways) : alloc_sets(INIT_WAY_MARKOV * N_LLC_SET), max_sets(MAX_WAY_MARKOV * N_LLC_SET), Super(size, num_ways) {}
 
-  void setpp(prism* p) { prefetcher = p; }
+  void resize(int waysForMarkov) { alloc_sets = waysForMarkov * N_LLC_SET; }
 
   MetaTableEntry* find(uint64_t key)
   {
-    // uint64_t index = key % this->alloc_sets;
-    // uint64_t tag = key / this->max_sets;
-    // auto& cam = cams[index];
-    // if (cam.find(tag) == cam.end())
-    //   return nullptr;
-    // int way = cam[tag];
-    // Entry& entry = this->entries[index][way];
-    // // assert(entry.tag == tag && entry.valid);
-    // return &entry;
     Entry* entry = Super::find(key);
     if (!entry) {
       return nullptr;
@@ -116,9 +153,18 @@ public:
     return &(entry->data);
   }
 
-  bool insert(uint64_t key, uint64_t ip, const MetaTableEntry& data);
+  void insert(uint64_t key, uint64_t ip, const MetaTableEntry& data)
+  {
+    Super::insert(key, data);
+#ifdef REPLACEMENT_POLICY
+    Super::set_default(key, ip);
+#else
+    Super::set_mru(key);
+#endif
+  }
 
-  void insert_for_resize(uint64_t key, const MetaTableEntry& data, uint64_t rrpv_value);
+  virtual uint64_t get_index(uint64_t key) { return key % this->alloc_sets; }
+  virtual uint64_t get_tag(uint64_t key) { return key / this->max_sets; }
 };
 
 struct pf_filter_entry {
@@ -178,11 +224,9 @@ public:
 
   int waysForCache = 16 - INIT_WAY_MARKOV;
   int waysForMarkov = INIT_WAY_MARKOV;
-  int origin_waysForMarkov = INIT_WAY_MARKOV;
   bool large_markov = (INIT_WAY_MARKOV == MAX_WAY_MARKOV) ? 1 : 0;
-  int waysForPCTable = 0;
-  int origin_waysForPCTable = 0;
-
+  int waysForPAT = 0;
+  int origin_waysForPAT = 0;
   bool init_resized = false;
   uint64_t demand = 0;
 
@@ -190,16 +234,14 @@ public:
   int discard_metadata = 0;
 
   bool warmup_complete = false;
-  std::string log_file_name;
-  std::ofstream logfile;
 
   // stat MT lookups
   uint64_t MT_lookups = 0;
   uint64_t MT_hits = 0;
   uint64_t MT_inserts = 0;
-  uint64_t PCT_lookups = 0;
-  uint64_t PCT_hits = 0;
-  uint64_t PCT_inserts = 0;
+  uint64_t PAT_lookups = 0;
+  uint64_t PAT_hits = 0;
+  uint64_t PAT_inserts = 0;
   bool warmup_reset = false;
 
   struct energy_stat {
@@ -226,8 +268,7 @@ public:
     deque<uint64_t> addrHistory;
 
     PCTableEntry(uint64_t _last_addr = 0, bool cache_hit = false)
-        : lookahead(DEFAULT_LOOKAHEAD), degree(DEFAULT_DEGREE), usefulPrefetchCount(0), issuedPrefetchCount(0),
-          hitCount(cache_hit ? 1 : 0), modified(false)
+        : lookahead(DEFAULT_LOOKAHEAD), degree(DEFAULT_DEGREE), usefulPrefetchCount(0), issuedPrefetchCount(0), hitCount(cache_hit ? 1 : 0), modified(false)
     {
       addrHistory.push_front(_last_addr);
     };
@@ -235,7 +276,7 @@ public:
     {
 #ifdef DYNAMIC_DEGREE
       float accuracy = 0;
-      //  Here we ignore late prefetches when calculating accuracy, 
+      //  Here we ignore late prefetches when calculating accuracy,
       //  since tracking late prefetches incurs additional overhead
       if (issuedPrefetchCount != 0)
         accuracy = 1.0 * usefulPrefetchCount / issuedPrefetchCount;
@@ -244,8 +285,8 @@ public:
 
       if (accuracy <= T_ACC_LOW) {
         delta_degree = -1;
-      } else if (accuracy > T_ACC_HIGH){
-          delta_degree += 1;
+      } else if (accuracy > T_ACC_HIGH) {
+        delta_degree += 1;
       }
 
       degree += delta_degree;
@@ -272,15 +313,22 @@ public:
   std::set<uint64_t> main_table_prefetches;
 
   // For PC_TRIGGER_PREFETCHING
+#ifndef INDEPENDENT_PAT
   bool enable_PC_Trigger_prefetching = false;
+#else
+  bool enable_PC_Trigger_prefetching = true;
+#endif
   int init_ways_for_pc_metadata_table;
   uint64_t fail_entry_init = 0;
   uint64_t inserted_PC = 0;
   uint64_t init_insert_PC = 0;
   uint64_t init_fail_entry_init = 0;
   std::deque<uint64_t> PCQ;
-  // SRRIPSetAssociativeCache<MetaTableEntry>* pcMetaTable = new SRRIPSetAssociativeCache<MetaTableEntry>(PC_META_TABLE_SIZE, PC_META_TABLE_ASSOC);
-  SRRIPSetAssociativeCache<MetaTableEntry>* pcMetaTable = nullptr;
+#ifdef INF_PAT
+  unordered_map<uint64_t, MetaTableEntry> pcMetaTable;
+#else
+  prismPCAddressTable* pcMetaTable = new prismPCAddressTable(PAT_SIZE, PAT_ASSOC);
+#endif
   // stat for pc metadata table
   uint64_t PCM_late_prefetches = 0;
   uint64_t PCM_useful_prefetches = 0;
@@ -290,48 +338,33 @@ public:
 
   void update_pc_metatable_size()
   {
-    if (inserted_PC >= 0.25 * RESIZE_SAMPLE_WINDOW) {
+#ifndef INDEPENDENT_PAT
+    if (fail_entry_init >= 0.3 * RESIZE_SAMPLE_WINDOW) {
       enable_PC_Trigger_prefetching = true;
-      waysForPCTable = 2;
-    } else if (inserted_PC >= 0.05 * RESIZE_SAMPLE_WINDOW) {
+      waysForPAT = 2;
+    } else if (fail_entry_init >= 0.15 * RESIZE_SAMPLE_WINDOW) {
       enable_PC_Trigger_prefetching = true;
-      waysForPCTable = 1;
+      waysForPAT = 1;
     } else {
       enable_PC_Trigger_prefetching = false;
-      waysForPCTable = 0;
+      waysForPAT = 0;
     }
-    // waysForPCTable = 2;
 
-    if (waysForPCTable > 0 && waysForPCTable != origin_waysForPCTable) {
-      SRRIPSetAssociativeCache<MetaTableEntry>* resized_pcMetaTable =
-          new SRRIPSetAssociativeCache<MetaTableEntry>(N_LLC_SET * 12 * waysForPCTable, PC_META_TABLE_ASSOC);
-      if (pcMetaTable) {
-        for (int i = 0; i < pcMetaTable->num_sets; i++) {
-          if (i % origin_waysForPCTable < waysForPCTable) {
-            for (int j = 0; j < pcMetaTable->entries[i].size(); j++) {
-              if (pcMetaTable->entries[i][j].valid) {
-                resized_pcMetaTable->insert(pcMetaTable->entries[i][j].key, pcMetaTable->entries[i][j].data);
-                resized_pcMetaTable->set_rrpv(pcMetaTable->entries[i][j].key, pcMetaTable->rrpv[i][j]);
-              }
-            }
-          }
-        }
-        delete pcMetaTable;
-      }
-      pcMetaTable = resized_pcMetaTable;
-      cout << "Resize PC metadata table. Alloc " << waysForPCTable << " ways for PC metadata!" << endl;
-    }
+    pcMetaTable->resize(waysForPAT);
+    if (waysForPAT != origin_waysForPAT)
+      cout << "Resize PC metadata table. Alloc " << waysForPAT << " ways for PC metadata!" << endl;
 
     // for stat, only record the init resize data
     if (!init_resized) {
-      init_ways_for_pc_metadata_table = waysForPCTable;
+      init_ways_for_pc_metadata_table = waysForPAT;
       init_insert_PC = inserted_PC;
       init_fail_entry_init = fail_entry_init;
     }
 
-    origin_waysForPCTable = waysForPCTable;
+    origin_waysForPAT = waysForPAT;
     inserted_PC = 0;
     fail_entry_init = 0;
+#endif
   }
 
   // for main metadata resize
@@ -339,7 +372,7 @@ public:
   uint64_t resize_issued_prefetch = 0;
   long last_llc_hits = 0;
   long last_llc_misses = 0;
-  float init_resize_score, init_resize_llc_hit_rate, init_resize_useful_prefetch_rate, init_resize_norm_upf;
+  float init_resize_score, init_resize_llc_hit_rate, init_resize_useful_prefetch_rate;
   int init_ways_for_markov;
   bool sample_start = false;
   bool init_sample = false;
@@ -375,6 +408,9 @@ public:
         waysForCache = 16 - MIN_WAY_MARKOV;
         waysForMarkov = MIN_WAY_MARKOV;
         large_markov = false;
+        cout << "Resize markov table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
+      } else {
+        cout << "Donot Resize markov table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
       }
     } else {
       temp_resize_score = K_CONS * temp_llc_hit_rate - temp_useful_prefetch_rate;
@@ -382,15 +418,21 @@ public:
         waysForCache = 16 - MAX_WAY_MARKOV;
         waysForMarkov = MAX_WAY_MARKOV;
         large_markov = true;
+        cout << "Resize markov table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
+      } else {
+        cout << "Donot Resize markov table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
       }
     }
 
+    // resize the main metadata table
+    mainMetaTable->resize(waysForMarkov);
+
     // for stat, only record the init resize data
     if (!init_resized) {
+      init_ways_for_markov = waysForMarkov;
       init_resize_score = temp_resize_score;
       init_resize_llc_hit_rate = temp_llc_hit_rate;
       init_resize_useful_prefetch_rate = temp_useful_prefetch_rate;
-      init_resize_norm_upf = 1.0 * resize_useful_prefetch / (llc_hits + llc_misses);
     }
 
     resize_useful_prefetch = 0;
@@ -401,53 +443,12 @@ public:
 
   void resize_cache()
   {
-    // if ((waysForCache + waysForMarkov + waysForPCTable) != 16) {
-    //   int delta = waysForCache + waysForMarkov + waysForPCTable - 16;
-    //   if (waysForMarkov > delta) {
-    //     waysForMarkov -= delta;
-    //   } else {
-    //     // here, waysForMarkov = 1
-    //     waysForCache = 16 - waysForMarkov - waysForPCTable;
-    //   }
-    // }
-    waysForCache = 16 - waysForMarkov - waysForPCTable;
-
+    waysForCache = 16 - waysForMarkov - waysForPAT;
     llc_cache->set_available_ways(waysForCache);
 
-    if (waysForMarkov != origin_waysForMarkov) {
-      // resize markov table
-      prismMetaTable* resized_metadata_table = new prismMetaTable(N_LLC_SET * META_TABLE_ASSOC * waysForMarkov, META_TABLE_ASSOC);
-      for (int i = 0; i < mainMetaTable->num_sets; i++) {
-        if (i % origin_waysForMarkov < waysForMarkov) {
-          for (int j = 0; j < mainMetaTable->entries[i].size(); j++) {
-            if (mainMetaTable->entries[i][j].valid)
-#ifdef REPLACEMENT_POLICY
-              resized_metadata_table->insert_for_resize(mainMetaTable->entries[i][j].key, mainMetaTable->entries[i][j].data, mainMetaTable->rrpv[i][j]);
-#else
-              resized_metadata_table->insert_for_resize(mainMetaTable->entries[i][j].key, mainMetaTable->entries[i][j].data, 0);
-#endif
-          }
-        }
-      }
-#ifdef REPLACEMENT_POLICY
-      resized_metadata_table->sampler = mainMetaTable->sampler;
-      resized_metadata_table->shct = mainMetaTable->shct;
-      resized_metadata_table->access_count = mainMetaTable->access_count;
-#endif
-      delete mainMetaTable;
-      mainMetaTable = resized_metadata_table;
-      mainMetaTable->setpp(this);
-      cout << "Resize markov table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
-    } else {
-      cout << "Donot Resize markov table. Alloc " << waysForMarkov << " ways for metadata!" << endl;
-    }
-
     if (!init_resized) {
-      init_ways_for_markov = waysForMarkov;
       init_resized = true;
     }
-
-    origin_waysForMarkov = waysForMarkov;
   }
 
   void reset_stat_counters()
@@ -455,9 +456,9 @@ public:
     MT_lookups = 0;
     MT_hits = 0;
     MT_inserts = 0;
-    PCT_lookups = 0;
-    PCT_hits = 0;
-    PCT_inserts = 0;
+    PAT_lookups = 0;
+    PAT_hits = 0;
+    PAT_inserts = 0;
 
     main_table_issued_prefetches = 0;
     main_table_accurate_prefetches = 0;
@@ -478,32 +479,11 @@ public:
   void set_llc_reference(CACHE* llc)
   {
     llc_cache = llc;
-    mainMetaTable->setpp(this);
     llc_cache->set_available_ways(waysForCache);
     cout << "Alloc " << waysForCache << " ways for cache" << endl;
   }
 
   int issue_mainMetatable(uint64_t pc, uint64_t block_addr, int degree);
-
-  /* Functions for miss classification */
-  uint64_t get_last_addr(uint64_t pc)
-  {
-    auto entry = pcTable->find(pc);
-    if (entry) {
-      return entry->data.addrHistory.front();
-    } else {
-      return 0;
-    }
-  };
-
-  std::set<uint64_t> get_triggers(uint64_t target)
-  {
-    if (mainMetaTable->reverse_metatable.find(target) != mainMetaTable->reverse_metatable.end()) {
-      return mainMetaTable->reverse_metatable[target];
-    } else {
-      return std::set<uint64_t>();
-    }
-  };
 
   using champsim::modules::prefetcher::prefetcher;
   void prefetcher_initialize()

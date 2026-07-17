@@ -23,12 +23,12 @@ WARM_UP = 50_000_000
 INTERVAL = 200_000_000
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--config", "-c", help="Assign the path of champsim config file, default to '../champsim_config.json'", default="config")
-parser.add_argument("--prefetcher", "-p" , required=True, help="The name of the prefetcher to use in L2 Cache, must be implemented in PRISM/prefetcher.")
+parser.add_argument("--config", "-c", help="Specify the champsim config file, e.g., config_dram2400 -> '../champsim_config_dram2400.json'", default="config")
+parser.add_argument("--prefetcher", "-p" , required=True, help="Specify the prefetcher to use in L2 Cache, must be implemented in PRISM/prefetcher")
 parser.add_argument("--exename", "-e", help="Specify the name of the compiled executable file, default to the prefetcher name")
-parser.add_argument("--ncore", "-n", help="numcore", default="1")
+parser.add_argument("--ncore", "-n", help="Specify the numcore of the simulator", default="1")
 parser.add_argument("--debug", "-d", choices=["default", "asan"], help="Choose the compilation mode, use 'default' to enable -g -O2; use 'asan' to enable AddressSanitizer")
-parser.add_argument("--flag","-f", nargs="*", help="Extra compile flags.")
+parser.add_argument("--flag","-f", nargs="*", help="Extra compile flags")
 args = parser.parse_args()
 
 extra_cflags=[]
@@ -90,7 +90,7 @@ if args.debug != None:
 
 if args.prefetcher == "prophet":
     if args.exename is not None and "profile" in args.exename:
-        extra_cflags.append("-DIS_TRAIN")
+        extra_cflags.append("-DPROFILE")
 
 if args.flag:
     for f in args.flag:

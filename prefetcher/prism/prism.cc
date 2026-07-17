@@ -188,6 +188,8 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
 #endif
               {
                 mainMetaTable->insert(trigger_addr, pc, {block_addr});
+                MT_inserts++;
+                energy_stats.markov_write[waysForMarkov == 1 ? 0 : 1]++;
               }
             }
           } else {
@@ -196,6 +198,8 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
 #endif
             {
               mainMetaTable->insert(trigger_addr, pc, {block_addr});
+              MT_inserts++;
+              energy_stats.markov_write[waysForMarkov == 1 ? 0 : 1]++;
             }
           }
         } else if (pc_entry->data.degree == 0) {
@@ -236,13 +240,13 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
       uint64_t triggerIP = *PCQ.rbegin();
       if (triggerIP) {
         uint64_t pc_meta_table_key = hash_xor(triggerIP);
-        auto victim_pc_meta_entry = pcMetaTable->insert(pc_meta_table_key, {block_addr});
-        PCT_inserts++;
-        energy_stats.pat_write[waysForPCTable == 1 ? 0 : 1]++;
-        if (!victim_pc_meta_entry.valid || victim_pc_meta_entry.key != pc_meta_table_key)
-          pcMetaTable->set_default(pc_meta_table_key);
-        else
-          pcMetaTable->touch(pc_meta_table_key);
+#ifdef INF_PAT
+        pcMetaTable[pc_meta_table_key] = {block_addr};
+#else
+        pcMetaTable->insert(pc_meta_table_key, {block_addr});
+#endif
+        PAT_inserts++;
+        energy_stats.pat_write[waysForPAT == 1 ? 0 : 1]++;
       }
     }
   }
@@ -267,21 +271,28 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
     // prefetches from PC Meta Table
     if (enable_PC_Trigger_prefetching) {
       uint64_t lookupPC = hash_xor(pc);
+
+      PAT_lookups++;
+      energy_stats.pat_read[waysForPAT == 1 ? 0 : 1]++;
+#ifdef INF_PAT
+      auto pc_meta_entry = pcMetaTable.find(lookupPC);
+      if (pc_meta_entry != pcMetaTable.end()) {
+        uint64_t target_addr = pc_meta_entry->second.target_addr;
+#else
       auto pc_meta_entry = pcMetaTable->find(lookupPC);
-      PCT_lookups++;
-      energy_stats.pat_read[waysForPCTable == 1 ? 0 : 1]++;
       if (pc_meta_entry) {
-        PCT_hits++;
-        pcMetaTable->touch(lookupPC);
+        uint64_t target_addr = pc_meta_entry->target_addr;
+#endif
+        PAT_hits++;
 #ifdef PREFETCH_FILTER
-        if (!pf_filter->find(pc_meta_entry->data.target_addr))
+        if (!pf_filter->find(target_addr))
 #endif
         {
-          prefetch_line({pc_meta_entry->data.target_addr << LOG2_BLOCK_SIZE}, true, 0);
+          prefetch_line({target_addr << LOG2_BLOCK_SIZE}, true, 0);
 #ifdef PREFETCH_FILTER
-          pf_filter->insert(pc_meta_entry->data.target_addr, 0);
+          pf_filter->insert(target_addr, 0);
 #endif
-          PCM_issued_prefetches.insert(pc_meta_entry->data.target_addr);
+          PCM_issued_prefetches.insert(target_addr);
         }
       }
     }
@@ -312,23 +323,16 @@ uint32_t prism::prefetcher_cache_fill(champsim::address addr, long set, long way
   return 0;
 }
 
-void prism::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where)
-{
-  
-}
+void prism::prefetcher_late_prefetch(champsim::address addr, champsim::address ip, std::string where) {}
 
 void prism::prefetcher_final_stats()
 {
-#ifdef ELABORATE_LOG
-  logfile.close();
-#endif
-
   cout << "MT_lookups " << MT_lookups << endl;
   cout << "MT_hits " << MT_hits << endl;
   cout << "MT_inserts " << MT_inserts << endl;
-  cout << "PCT_lookups " << PCT_lookups << endl;
-  cout << "PCT_hits " << PCT_hits << endl;
-  cout << "PCT_inserts " << PCT_inserts << endl;
+  cout << "PAT_lookups " << PAT_lookups << endl;
+  cout << "PAT_hits " << PAT_hits << endl;
+  cout << "PAT_inserts " << PAT_inserts << endl;
 
   cout << "MT_hitrate " << (MT_lookups ? (double)MT_hits / MT_lookups : 0) << endl;
   cout << "MT_issuedpf " << main_table_issued_prefetches << endl;
@@ -349,10 +353,9 @@ void prism::prefetcher_final_stats()
 
   cout << "Init_L3Hit_rate " << init_resize_llc_hit_rate << endl;
   cout << "Init_UPF_rate " << init_resize_useful_prefetch_rate << endl;
-  cout << "Init_NormUPF_rate " << init_resize_norm_upf << endl;
   cout << "Init_Score " << init_resize_score << endl;
   cout << "Init_WayForMarkov " << init_ways_for_markov << endl;
-  cout << "Init_WayForPCT " << init_ways_for_pc_metadata_table << endl;
+  cout << "Init_WayForPAT " << init_ways_for_pc_metadata_table << endl;
 
   cout << "training_unit_read " << energy_stats.training_table_read << endl;
   cout << "training_unit_write " << energy_stats.training_table_write << endl;
@@ -372,53 +375,5 @@ void prism::prefetcher_final_stats()
 }
 
 void prism::prefetcher_cycle_operate() {}
-
-bool prismMetaTable::insert(uint64_t key, uint64_t ip, const MetaTableEntry& data)
-{
-  prefetcher->MT_inserts++;
-  prefetcher->energy_stats.markov_write[prefetcher->waysForMarkov == 1 ? 0 : 1]++;
-  reverse_metatable[data.target_addr].insert(key);
-
-  Entry victim_entry = Super::insert(key, data);
-#ifdef REPLACEMENT_POLICY
-  Super::set_default(key, ip);
-#else
-  Super::set_mru(key);
-#endif
-
-  bool ret = false;
-  if (victim_entry.valid) {
-    reverse_metatable[victim_entry.data.target_addr].erase(victim_entry.key);
-#ifdef ELABORATE_LOG
-    std::string reason;
-    if (victim_entry.tag != tag) {
-      reason = "CAPACITY";
-    } else {
-      reason = "CONFLICT";
-    }
-    pp->logfile << std::dec << pp->llc_cache->current_cycle() << " EVICT " << reason << " " << std::hex << victim_entry.key << " "
-                << victim_entry.data.correlatedAddr << std::endl;
-#endif
-    ret = true;
-  }
-#ifdef ELABORATE_LOG
-  pp->logfile << std::dec << pp->llc_cache->current_cycle() << " ADD " << std::hex << key << " " << data.correlatedAddr << std::endl;
-#endif
-  return ret;
-}
-
-void prismMetaTable::insert_for_resize(uint64_t key, const MetaTableEntry& data, uint64_t rrpv_value)
-{
-  reverse_metatable[data.target_addr].insert(key);
-  auto victim_entry = Super::insert(key, data);
-#ifdef REPLACEMENT_POLICY
-  Super::set_rrpv(key, rrpv_value);
-#else
-  Super::set_mru(key);
-#endif
-  if (victim_entry.valid) {
-    reverse_metatable[victim_entry.data.target_addr].erase(victim_entry.key);
-  }
-}
 
 uint64_t hash_xor(uint64_t key) { return key ^ (key >> 7) ^ (key >> 13) ^ (key >> 21); }

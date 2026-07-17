@@ -119,7 +119,7 @@ if __name__ == "__main__":
     
     # 3. 初始化线程/进程池
     # 注意：500个进程通常太多了，除非你的机器有几百个核心，否则上下文切换会拖慢速度
-    executor = ProcessPoolExecutor(max_workers=500) 
+    executor = ProcessPoolExecutor(max_workers=90) 
 
     running = []
     total_n = 0

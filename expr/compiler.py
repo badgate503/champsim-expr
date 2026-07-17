@@ -95,7 +95,7 @@ if args.mode == "missclass":
 
 if args.prefetcher == "prophet":
     if args.exename is not None and "profile" in args.exename:
-        extra_cflags.append("-DIS_TRAIN")
+        extra_cflags.append("-DPROFILE")
 
 if args.flag:
     for f in args.flag:

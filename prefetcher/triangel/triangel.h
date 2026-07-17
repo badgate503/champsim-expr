@@ -585,17 +585,17 @@ struct MetadataEntry {
 
   static uint64_t extractTag(uint64_t addr)
   {
-    const int CHUNK = 10;
-    const uint64_t MASK = (1ULL << CHUNK) - 1;
-    uint64_t tag = 0;
-    // Process a fixed number of chunks to cover 64 bits;
-    // higher bits beyond the address width are treated as 0 (padding).
-    const int NUM_CHUNKS = (64 + CHUNK - 1) / CHUNK; // 7 chunks for 64-bit addr
-    for (int i = 0; i < NUM_CHUNKS; ++i) {
-      tag ^= (addr & MASK);
-      addr >>= CHUNK;
-    }
-    return tag;
+    // const int CHUNK = 10;
+    // const uint64_t MASK = (1ULL << CHUNK) - 1;
+    // uint64_t tag = 0;
+    // // Process a fixed number of chunks to cover 64 bits;
+    // // higher bits beyond the address width are treated as 0 (padding).
+    // const int NUM_CHUNKS = (64 + CHUNK - 1) / CHUNK; // 7 chunks for 64-bit addr
+    // for (int i = 0; i < NUM_CHUNKS; ++i) {
+    //   tag ^= (addr & MASK);
+    //   addr >>= CHUNK;
+    // }
+    return addr >> TRNGL_MD_INDEX_BITS;
   }
 
   MetadataEntry(uint64_t addr, uint64_t target_addr) : key(addr), target_addr(target_addr), conf(false), used(false) {}

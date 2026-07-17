@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 BASE_DIR = Path(__file__).resolve().parent
-OUT_PATH = BASE_DIR.parent / "figure-out" / "metadata-study.pdf"
+OUT_PATH = BASE_DIR.parent / "figure-out" / "Fig13-metadata.pdf"
 FIG_SIZE = (3.5, 2.0)
 FONT_FAMILY = "Times New Roman"
 FONT_SIZE = 8

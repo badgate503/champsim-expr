@@ -28,7 +28,7 @@
 #define MRB_MAX_COUNTER 3
 #define GLOBAL_DEGREE 4 // metatable & mrb_table has this degree
 
-// #define IS_TRAIN
+// #define PROFILE
 #define ENABLE_MRB true
 
 class prophet;
@@ -178,13 +178,13 @@ public:
   // BaseTags* cachetags;
   CACHE* llc_cache = NULL;
   int debug_level = 0;
-#ifdef IS_TRAIN
+#ifdef PROFILE
   bool inTraining = true;
 #else
   bool inTraining = false;
 #endif
   bool enableMRB = ENABLE_MRB;
-#ifdef IS_TRAIN
+#ifdef PROFILE
   int globalDegree = 1;
 #else
   int globalDegree = GLOBAL_DEGREE;
@@ -302,11 +302,6 @@ public:
     std::string trace_dir = getTraceDir(trace_path);
     std::cout << "cpu = " << champsim::cur_cpu << ", tracename = " << getTraceName(trace_path) << std::endl;
     champsim::cur_cpu++;
-#ifdef ELABORATE_LOG
-    log_file_name = "./" + getTraceName(trace_path) + ".txt";
-    cout << log_file_name << endl;
-    logfile.open(log_file_name);
-#endif
 
     if (inTraining) {
       llc_cache = llc;

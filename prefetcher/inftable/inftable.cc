@@ -111,29 +111,13 @@ uint32_t inftable::prefetcher_cache_operate(champsim::address addr, champsim::ad
   if (pc_entry != pcTable.end()) {
     last_addr = pc_entry->second.front();
   } else {
-#ifdef BASE_TRIGGER_NUM
-    std::deque<uint64_t> temp(BASE_TRIGGER_NUM, 0);
-    pcTable[pc] = temp;
-#else
     std::deque<uint64_t> temp(1, 0);
     pcTable[pc] = temp;
-#endif
     pc_entry = pcTable.find(pc);
   }
   // pcTable->set_mru(pc);
 
   uint64_t lookup_key = block_addr;
-#if BASE_TRIGGER_NUM == 2
-  lookup_key ^= (pc_entry->second[0] << 5) ^ (pc_entry->second[0] >> 7);
-  lookup_key ^= lookup_key >> 16;
-#elif BASE_TRIGGER_NUM == 3
-  lookup_key ^= (pc_entry->second[0] << 5) ^ (pc_entry->second[0] >> 7) ^ (pc_entry->second[1] << 11) ^ (pc_entry->second[1] >> 13);
-  lookup_key ^= lookup_key >> 16;
-#elif BASE_TRIGGER_NUM == 4
-  lookup_key ^= (pc_entry->second[0] << 5) ^ (pc_entry->second[0] >> 7) ^ (pc_entry->second[1] << 11) ^ (pc_entry->second[1] >> 13) ^ (pc_entry->second[2] << 17)
-                ^ (pc_entry->second[2] >> 19);
-  lookup_key ^= lookup_key >> 16;
-#endif
 
   auto metadata = metaTable.find(lookup_key);
   if (metadata != metaTable.end()) {
@@ -149,17 +133,6 @@ uint32_t inftable::prefetcher_cache_operate(champsim::address addr, champsim::ad
   // 3.1 update the metaTable
   if (last_addr != 0 && last_addr != block_addr) {
     uint64_t insert_key = last_addr;
-#if BASE_TRIGGER_NUM == 2
-    insert_key ^= (pc_entry->second[1] << 5) ^ (pc_entry->second[1] >> 7);
-    insert_key ^= insert_key >> 16;
-#elif BASE_TRIGGER_NUM == 3
-    insert_key ^= (pc_entry->second[1] << 5) ^ (pc_entry->second[1] >> 7) ^ (pc_entry->second[2] << 11) ^ (pc_entry->second[2] >> 13);
-    insert_key ^= insert_key >> 16;
-#elif BASE_TRIGGER_NUM == 4
-    lookup_key ^= (pc_entry->second[1] << 5) ^ (pc_entry->second[1] >> 7) ^ (pc_entry->second[2] << 11) ^ (pc_entry->second[2] >> 13) ^ (pc_entry->second[3] << 17)
-                  ^ (pc_entry->second[3] >> 19);
-    insert_key ^= insert_key >> 16;
-#endif
 
     auto last_meta = metaTable.find(insert_key);
 
@@ -201,18 +174,10 @@ uint32_t inftable::prefetcher_cache_operate(champsim::address addr, champsim::ad
   }
   if (!already_exist) {
     pc_entry->second.push_front(block_addr);
-#ifdef BASE_TRIGGER_NUM
-    if (pc_entry->second.size() > BASE_TRIGGER_NUM)
-      pc_entry->second.pop_back();
-#else
     if (pc_entry->second.size() > 1)
       pc_entry->second.pop_back();
-#endif
   }
 
-  
-
-  
   return metadata_in;
 }
 

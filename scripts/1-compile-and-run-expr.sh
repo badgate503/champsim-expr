@@ -50,7 +50,7 @@ echo "All checks and compilations completed."
 # Use runner.py to start a runner service
 
 # submit the tasks
-./runner.py -p no baseline triangel prophet prism -l ligra gap spec17 ml google -s
+./runner.py -p baseline triangel prophet prism -l ligra gap spec17 ml google -s
 
 echo "========================================"
 echo "All Champsim tasks finished"
