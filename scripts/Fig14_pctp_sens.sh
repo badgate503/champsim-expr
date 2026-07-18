@@ -50,3 +50,6 @@ minutes=$(( (duration % 3600) / 60 ))
 seconds=$((duration % 60))
 
 echo "运行耗时: ${hours}小时 ${minutes}分钟 ${seconds}秒"
+
+# python3 get_result.py -p pcq-1 pcq-2 pcq-4 pcq-8 pcq-12 pcq-16 -o ../experiments/results/pctp -m IPCI
+# python3 get_result.py -p pat-12k pat-24k pat-48k pat-96k pat-144k pat-192k -o ../experiments/results/pctp -m IPCI

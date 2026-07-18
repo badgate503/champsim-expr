@@ -1,10 +1,11 @@
 <p align="center">
   <img src="logo.png" alt="PRISM Logo" width="400">
-</p>
 
-<h2 align="center">
-  PRISM: A Miss-Attribution-Guided Temporal Prefetcher Beyond Metadata Management
-</h2>
+
+<h3 align="center">
+  PRISM: A Miss-Attribution-Guided Temporal Prefetcher <br> Beyond Metadata Management
+</h3>
+</p>
 
 <!-- <p align="center">
     <a href="https://github.com/CMU-SAFARI/Athena/blob/master/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
@@ -96,7 +97,7 @@ PRISM/
 PRISM provides a push-button script, `prism-expr.py`, to reproduce the major experimental results reported in the paper.
 
 ```bash
-cd PRISM/scripts
+cd scripts
 
 python3 prism-expr.py -p <Phase> -f <FigureID>
 ```
@@ -128,7 +129,7 @@ Each `FigureID` corresponds to a figure in the paper.
 To reproduce **Figure 10** with a single command:
 
 ```bash
-cd PRISM/scripts
+cd scripts
 
 python3 prism-expr.py -p All -f Fig10
 ```
