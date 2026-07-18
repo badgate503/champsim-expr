@@ -1,89 +1,247 @@
-# ChampSim
+<p align="center">
+  <img src="logo.png" alt="PRISM Logo" width="400">
+</p>
 
-![GitHub](https://img.shields.io/github/license/ChampSim/ChampSim)
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/ChampSim/ChampSim/test.yml)
-![GitHub forks](https://img.shields.io/github/forks/ChampSim/ChampSim)
-[![Coverage Status](https://coveralls.io/repos/github/ChampSim/ChampSim/badge.svg?branch=develop)](https://coveralls.io/github/ChampSim/ChampSim?branch=develop)
+<h2 align="center">
+  PRISM: A Miss-Attribution-Guided Temporal Prefetcher Beyond Metadata Management
+</h2>
 
-ChampSim is a trace-based simulator for a microarchitecture study. If you have questions about how to use ChampSim, we encourage you to search the threads in the Discussions tab or start your own thread. If you are aware of a bug or have a feature request, open a new Issue.
+<!-- <p align="center">
+    <a href="https://github.com/CMU-SAFARI/Athena/blob/master/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+    <a href="https://github.com/CMU-SAFARI/Athena/releases"><img alt="GitHub release" src="https://img.shields.io/github/release/CMU-SAFARI/Athena"></a>
+    <a href="https://arxiv.org/abs/2601.17615"><img src="https://img.shields.io/badge/cs.AR-2601.17615-b31b1b?logo=arxiv&logoColor=red" alt="DOI"></a>
+    <a href="https://doi.org/10.5281/zenodo.17854634"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.17854634.svg" alt="DOI"></a>
+</p> -->
 
-# Using ChampSim
+<details open="open">
+  <summary>Table of Contents</summary>
+  <ol>
+    <li><a href="#what-is-PRISM">What is PRISM?</a></li>
+    <li><a href="#setup">Set Up</a></li>
+    <li><a href="#preparing-traces">Preparing Traces</a></li>
+    <li><a href="#running-experiments">Running Experiments</a></li>
+    <li><a href="#understanding-results">Understanding Results</a></li>
+    <li><a href="#brief-code-walkthrough">Brief Code Walkthrough</a></li>
+    <li><a href="#citation">Citation</a></li>
+    <li><a href="#license">License</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ol>
+</details>
 
-ChampSim is the result of academic research. If you use this software in your work, please cite it using the following reference:
 
-    Gober, N., Chacon, G., Wang, L., Gratz, P. V., Jimenez, D. A., Teran, E., Pugsley, S., & Kim, J. (2022). The Championship Simulator: Architectural Simulation for Education and Competition. https://doi.org/10.48550/arXiv.2210.14324
+## What is PRISM?
 
-If you use ChampSim in your work, you may submit a pull request modifying `PUBLICATIONS_USING_CHAMPSIM.bib` to have it featured in [the documentation](https://champsim.github.io/ChampSim/master/Publications-using-champsim.html).
+**PRISM** is a high-performance temporal prefetcher. Motivated by a systematic miss attribution analysis, PRISM jointly addresses three major sources of non-compulsory cache misses: unseen correlations, late prefetches, and metadata inefficiency. It integrates **PC-Triggered Prefetching (PCTP)** to capture ⟨PC, Address⟩ correlations, **Timeliness-Guaranteed Prefetching (TGP)** to improve prefetch timeliness through static lookahead and adaptive degree control, and **Utility-Aware Management (UAM)** to maximize metadata efficiency via Bimodal Metadata Partitioning (BMP), selective insertion, and a fine-tuned SHiP replacement policy. Together, these techniques enable PRISM to consistently outperform state-of-the-art temporal prefetchers across diverse workloads. 
 
-# Download dependencies
+## Set Up
 
-ChampSim uses [vcpkg](https://vcpkg.io) to manage its dependencies. In this repository, vcpkg is included as a submodule. You can download the dependencies with
-```
-git submodule update --init
-vcpkg/bootstrap-vcpkg.sh
-vcpkg/vcpkg install
-```
+### 0. Prerequisite
 
-# Compile
+This repository has been tested with the following system configuration:
+- GNU Make 4.3
+- GCC/G++ 11.4.0
+- Python 3.10.12
 
-ChampSim takes a JSON configuration script. Examine `champsim_config.json` for a fully-specified example. All options described in this file are optional and will be replaced with defaults if not specified. The configuration scrip can also be run without input, in which case an empty file is assumed.
-```
-$ ./config.sh <configuration file>
-$ make
-```
-
-# Download DPC-3 trace
-
-Traces used for the 3rd Data Prefetching Championship (DPC-3) can be found here. (https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/) A set of traces used for the 2nd Cache Replacement Championship (CRC-2) can be found from this link. (http://bit.ly/2t2nkUj)
-
-Storage for these traces is kindly provided by Daniel Jimenez (Texas A&M University) and Mike Ferdman (Stony Brook University). If you find yourself frequently using ChampSim, it is highly encouraged that you maintain your own repository of traces, in case the links ever break.
-
-# Run simulation
-
-Execute the binary directly.
-```
-$ bin/champsim --warmup-instructions 200000000 --simulation-instructions 500000000 ~/path/to/traces/600.perlbench_s-210B.champsimtrace.xz
-```
-
-The number of warmup and simulation instructions given will be the number of instructions retired. Note that the statistics printed at the end of the simulation include only the simulation phase.
-
-# Add your own branch predictor, data prefetchers, and replacement policy
-**Copy an empty template**
-```
-$ mkdir prefetcher/mypref
-$ cp prefetcher/no_l2c/no.cc prefetcher/mypref/mypref.cc
+### 1. Clone the repository
+```bash
+git clone 
+cd PRISM
 ```
 
-**Work on your algorithms with your favorite text editor**
-```
-$ vim prefetcher/mypref/mypref.cc
+### 2. Set up the environment
+```bash
+bash setup.sh
 ```
 
-**Compile and test**
-Add your prefetcher to the configuration file.
+## Preparing Traces
+
+The trace dataset is hosted on **Hugging Face** and distributed separately from this repository due to its large size.
+
+### Install the Hugging Face CLI (if needed)
+
+```bash
+pip install -U "huggingface_hub[cli]"
 ```
-{
-    "L2C": {
-        "prefetcher": "mypref"
-    }
+
+### Download the trace dataset
+
+```bash
+huggingface-cli download YiquanLin-ZJU/trace \
+    --repo-type dataset \
+    --local-dir trace
+```
+
+The complete evaluation uses **87 traces** from five benchmark suites:
+
+* **Ligra:** 10 traces
+* **GAP:** 9 traces
+* **SPEC CPU 2017:** 11 traces
+* **ML:** 15 traces
+* **Google:** 42 traces
+
+The expected directory structure is:
+
+```text
+PRISM/
+├── trace/
+│   ├── traces-gap/
+│   ├── traces-google/
+│   └── ...
+├── scripts/
+└── ...
+```
+
+## Running Experiments
+
+PRISM provides a push-button script, `prism-expr.py`, to reproduce the major experimental results reported in the paper.
+
+```bash
+cd PRISM/scripts
+
+python3 prism-expr.py -p <Phase> -f <FigureID>
+```
+
+### Phases
+
+| Phase     | Description                                            |
+| --------- | ------------------------------------------------------ |
+| `Compile` | Build the required binaries.                           |
+| `Run`     | Run the experiments for the selected figure.           |
+| `Draw`    | Aggregate results and generate the figure.             |
+| `All`     | Execute all of the above (`Compile` + `Run` + `Draw`). |
+
+### Supported Figures
+
+Each `FigureID` corresponds to a figure in the paper.
+
+| FigureID | Description                                     |
+| -------- | ----------------------------------------------- |
+| `Fig10`  | IPC speedup on the single-core system           |
+| `Fig11`  | Prefetch accuracy, timeliness, and DRAM traffic |
+| `Fig12`  | Normalized energy consumption                   |
+| `Fig13`  | Metadata analysis                               |
+| `Fig16`  | Sensitivity analysis                            |
+| `Fig18`  | Ablation study                                  |
+
+### Example: Reproducing Figure 10
+
+To reproduce **Figure 10** with a single command:
+
+```bash
+cd PRISM/scripts
+
+python3 prism-expr.py -p All -f Fig10
+```
+
+Alternatively, execute each phase separately:
+
+```bash
+# Step 1: Build the binaries
+python3 prism-expr.py -p Compile -f Fig10
+
+# Step 2: Run the experiments
+python3 prism-expr.py -p Run -f Fig10
+
+# Wait for all jobs to finish (~3 hours for Fig10)
+
+# Step 3: Aggregate results and generate the figure
+python3 prism-expr.py -p Draw -f Fig10
+```
+
+## Understanding Results
+
+### ChampSim Output
+
+Simulation logs are stored in:
+
+```text
+experiments/champsim_log/<binary_name>/<trace_name>.log
+```
+
+### Aggregated Results
+
+Processed results are available under:
+
+```text
+experiments/results/
+├── basic/                    # Results for Fig. 10 and Fig. 11
+├── energy/                   # Results for Fig. 12
+├── metadata/                 # Results for Fig. 13
+├── ablation/                 # Results for Fig. 18
+└── ...
+```
+
+### Key Metrics
+
+The primary evaluation metric is **IPC Speedup** over the baseline (IPCI):
+
+```text
+IPCI = IPC_experiment / IPC_baseline
+```
+
+Results are reported as **geometric means** and are summarized at two levels:
+
+* **Per-suite:** Geometric mean across all traces within each benchmark suite (Ligra, GAP, SPEC, ML, and Google).
+* **Overall:** Geometric mean across the benchmark suites.
+
+## Brief Code Walkthrough
+
+This repository is organized as follows:
+
+```text
+PRISM/
+├── bin/                    # Compiled ChampSim binaries
+├── branch/                 # Branch predictor implementations (ChampSim)
+├── btb/                    # Branch target buffer implementations (ChampSim)
+├── config/                 # ChampSim configuration files
+├── docs/                   # Documentation
+├── experiments/            # Experiment outputs
+│   ├── champsim_log/       # Raw simulation logs
+│   ├── figure_out/         # Generated figures
+│   ├── results/            # Aggregated CSV results
+│   └── ...
+├── inc/                    # Header files
+│   ├── prism_framework.h   # Core metadata framework used by PRISM
+│   └── ...
+├── prefetcher/             # Temporal prefetcher implementations
+│   ├── baseline/           # Baseline temporal prefetcher
+│   ├── prism/              # PRISM implementation
+│   ├── triangel/           # Triangel prefetcher
+│   ├── prophet/            # Prophet prefetcher
+│   └── ...
+├── replacement/            # Cache replacement policies (ChampSim)
+├── scripts/                # Experiment automation
+│   ├── champsim_config/    # ChampSim configuration files
+│   ├── figure-scripts/     # Figure generation scripts
+│   ├── prism-expr.py       # Main entry point for reproducing experiments
+│   ├── compiler.py         # Binary compilation
+│   ├── runner.py           # Experiment execution
+│   ├── get_result.py       # Result collection and aggregation
+│   └── ...
+├── src/                    # ChampSim simulator source code
+├── test/                   # Unit tests
+├── trace/                  # Trace files (user must download separately)
+├── Makefile                # Build configuration
+└── setup.sh                # Environment setup script
+```
+
+## Citation
+
+PRISM was accepted by MICRO 2026. If you find this repository useful, please cite the paper using:
+
+```
+@inproceedings{prism,
+  title           = {{PRISM: A Miss-Attribution-Guided Temporal Prefetcher <br> Beyond Metadata Management}},
+  author          = {Lin, Yiquan and Liu, Jianxiang and Chen, Yiquan and Lin, Wenhai and Wang, Zonghui and Chen, Wenzhi},
+  booktitle       = {MICRO},
+  year            = {2026}
 }
 ```
-Note that the example prefetcher is an L2 prefetcher. You might design a prefetcher for a different level.
 
-```
-$ ./config.sh <configuration file>
-$ make
-$ bin/champsim --warmup-instructions 200000000 --simulation-instructions 500000000 600.perlbench_s-210B.champsimtrace.xz
-```
+## License
 
-# How to create traces
+Distributed under the MIT License. See `LICENSE` for more information.
 
-Program traces are available in a variety of locations, however, many ChampSim users wish to trace their own programs for research purposes.
-Example tracing utilities are provided in the `tracer/` directory.
+## Contact
 
-# Evaluate Simulation
-
-ChampSim measures the IPC (Instruction Per Cycle) value as a performance metric. <br>
-There are some other useful metrics printed out at the end of simulation. <br>
-
-Good luck and be a champion! <br>
+Please contact [Yiquan Lin](linyiquan@zju.edu.cn) if you have any questions/suggestions.

@@ -106,77 +106,77 @@ executable_list = {
 }
 
 compile_command = {
-    "baseline": "python3 compiler.py -p baseline",
-    "triangel": "python3 compiler.py -p triangel",
-    "prophet": "python3 compiler.py -p prophet",
-    "prism": "python3 compiler.py -p prism",
+    "baseline": f"python3 compiler.py -p baseline",
+    "triangel": f"python3 compiler.py -p triangel",
+    "prophet": f"python3 compiler.py -p prophet",
+    "prism": f"python3 compiler.py -p prism",
 
-    "prism-ol-pctp": "python3 compiler.py -p prism -f ABLATION_STUDY PC_TRIGGER_PREFETCHING -e prism-ol-pctp",
-    "prism-ol-tgp": "python3 compiler.py -p prism -f ABLATION_STUDY TG_PREFETCHING -e prism-ol-tgp",
-    "prism-ol-bmp": "python3 compiler.py -p prism -f ABLATION_STUDY BMP_RESIZE -e prism-ol-bmp",
-    "prism-ol-irp": "python3 compiler.py -p prism -f ABLATION_STUDY INSERTION_POLICY REPLACEMENT_POLICY -e prism-ol-irp",
-    "prism-wo-pctp": "python3 compiler.py -p prism -f ABLATION_STUDY TG_PREFETCHING BMP_RESIZE INSERTION_POLICY REPLACEMENT_POLICY -e prism-wo-pctp",
-    "prism-wo-tgp": "python3 compiler.py -p prism -f ABLATION_STUDY PC_TRIGGER_PREFETCHING BMP_RESIZE INSERTION_POLICY REPLACEMENT_POLICY -e prism-wo-tgp",
-    "prism-wo-bmp": "python3 compiler.py -p prism -f ABLATION_STUDY PC_TRIGGER_PREFETCHING TG_PREFETCHING INSERTION_POLICY REPLACEMENT_POLICY -e prism-wo-bmp",
-    "prism-wo-irp": "python3 compiler.py -p prism -f ABLATION_STUDY PC_TRIGGER_PREFETCHING TG_PREFETCHING BMP_RESIZE -e prism-wo-irp",
+    "prism-ol-pctp": f"python3 compiler.py -p prism -f ABLATION_STUDY PC_TRIGGER_PREFETCHING -e prism-ol-pctp",
+    "prism-ol-tgp": f"python3 compiler.py -p prism -f ABLATION_STUDY TG_PREFETCHING -e prism-ol-tgp",
+    "prism-ol-bmp": f"python3 compiler.py -p prism -f ABLATION_STUDY BMP_RESIZE -e prism-ol-bmp",
+    "prism-ol-irp": f"python3 compiler.py -p prism -f ABLATION_STUDY INSERTION_POLICY REPLACEMENT_POLICY -e prism-ol-irp",
+    "prism-wo-pctp": f"python3 compiler.py -p prism -f ABLATION_STUDY TG_PREFETCHING BMP_RESIZE INSERTION_POLICY REPLACEMENT_POLICY -e prism-wo-pctp",
+    "prism-wo-tgp": f"python3 compiler.py -p prism -f ABLATION_STUDY PC_TRIGGER_PREFETCHING BMP_RESIZE INSERTION_POLICY REPLACEMENT_POLICY -e prism-wo-tgp",
+    "prism-wo-bmp": f"python3 compiler.py -p prism -f ABLATION_STUDY PC_TRIGGER_PREFETCHING TG_PREFETCHING INSERTION_POLICY REPLACEMENT_POLICY -e prism-wo-bmp",
+    "prism-wo-irp": f"python3 compiler.py -p prism -f ABLATION_STUDY PC_TRIGGER_PREFETCHING TG_PREFETCHING BMP_RESIZE -e prism-wo-irp",
 
-    "l1ipcp.baseline": "python3 compiler.py -p baseline -c config_ipcp -e l1ipcp.baseline",
-    "l1ipcp.triangel": "python3 compiler.py -p triangel -c config_ipcp -e l1ipcp.triangel",
-    "l1ipcp.prophet": "python3 compiler.py -p prophet -c config_ipcp -e l1ipcp.prophet",
-    "l1ipcp.prism": "python3 compiler.py -p prism -c config_ipcp -e l1ipcp.prism",
+    "l1ipcp.baseline": f"python3 compiler.py -p baseline -c config_ipcp -e l1ipcp.baseline",
+    "l1ipcp.triangel": f"python3 compiler.py -p triangel -c config_ipcp -e l1ipcp.triangel",
+    "l1ipcp.prophet": f"python3 compiler.py -p prophet -c config_ipcp -e l1ipcp.prophet",
+    "l1ipcp.prism": f"python3 compiler.py -p prism -c config_ipcp -e l1ipcp.prism",
 
-    "l1berti.baseline": "python3 compiler.py -p baseline -c config_berti -e l1berti.baseline",
-    "l1berti.triangel": "python3 compiler.py -p triangel -c config_berti -e l1berti.triangel",
-    "l1berti.prophet": "python3 compiler.py -p prophet -c config_berti -e l1berti.prophet",
-    "l1berti.prism": "python3 compiler.py -p prism -c config_berti -e l1berti.prism",
+    "l1berti.baseline": f"python3 compiler.py -p baseline -c config_berti -e l1berti.baseline",
+    "l1berti.triangel": f"python3 compiler.py -p triangel -c config_berti -e l1berti.triangel",
+    "l1berti.prophet": f"python3 compiler.py -p prophet -c config_berti -e l1berti.prophet",
+    "l1berti.prism": f"python3 compiler.py -p prism -c config_berti -e l1berti.prism",
 
-    "dram1200.baseline": "python3 compiler.py -p baseline -c config_dram1200 -e dram1200.baseline",
-    "dram1200.triangel": "python3 compiler.py -p triangel -c config_dram1200 -e dram1200.triangel",
-    "dram1200.prophet": "python3 compiler.py -p prophet -c config_dram1200 -e dram1200.prophet",
-    "dram1200.prism": "python3 compiler.py -p prism -c config_dram1200 -e dram1200.prism",
+    "dram1200.baseline": f"python3 compiler.py -p baseline -c config_dram1200 -e dram1200.baseline",
+    "dram1200.triangel": f"python3 compiler.py -p triangel -c config_dram1200 -e dram1200.triangel",
+    "dram1200.prophet": f"python3 compiler.py -p prophet -c config_dram1200 -e dram1200.prophet",
+    "dram1200.prism": f"python3 compiler.py -p prism -c config_dram1200 -e dram1200.prism",
 
-    "dram2400.baseline": "python3 compiler.py -p baseline -c config_dram2400 -e dram2400.baseline",
-    "dram2400.triangel": "python3 compiler.py -p triangel -c config_dram2400 -e dram2400.triangel",
-    "dram2400.prophet": "python3 compiler.py -p prophet -c config_dram2400 -e dram2400.prophet",
-    "dram2400.prism": "python3 compiler.py -p prism -c config_dram2400 -e dram2400.prism",
+    "dram2400.baseline": f"python3 compiler.py -p baseline -c config_dram2400 -e dram2400.baseline",
+    "dram2400.triangel": f"python3 compiler.py -p triangel -c config_dram2400 -e dram2400.triangel",
+    "dram2400.prophet": f"python3 compiler.py -p prophet -c config_dram2400 -e dram2400.prophet",
+    "dram2400.prism": f"python3 compiler.py -p prism -c config_dram2400 -e dram2400.prism",
 
-    "dram3600.baseline": "python3 compiler.py -p baseline -c config_dram3600 -e dram3600.baseline",
-    "dram3600.triangel": "python3 compiler.py -p triangel -c config_dram3600 -e dram3600.triangel",
-    "dram3600.prophet": "python3 compiler.py -p prophet -c config_dram3600 -e dram3600.prophet",
-    "dram3600.prism": "python3 compiler.py -p prism -c config_dram3600 -e dram3600.prism",
+    "dram3600.baseline": f"python3 compiler.py -p baseline -c config_dram3600 -e dram3600.baseline",
+    "dram3600.triangel": f"python3 compiler.py -p triangel -c config_dram3600 -e dram3600.triangel",
+    "dram3600.prophet": f"python3 compiler.py -p prophet -c config_dram3600 -e dram3600.prophet",
+    "dram3600.prism": f"python3 compiler.py -p prism -c config_dram3600 -e dram3600.prism",
 
-    "dram6000.baseline": "python3 compiler.py -p baseline -c config_dram6000 -e dram6000.baseline",
-    "dram6000.triangel": "python3 compiler.py -p triangel -c config_dram6000 -e dram6000.triangel",
-    "dram6000.prophet": "python3 compiler.py -p prophet -c config_dram6000 -e dram6000.prophet",
-    "dram6000.prism": "python3 compiler.py -p prism -c config_dram6000 -e dram6000.prism",
+    "dram6000.baseline": f"python3 compiler.py -p baseline -c config_dram6000 -e dram6000.baseline",
+    "dram6000.triangel": f"python3 compiler.py -p triangel -c config_dram6000 -e dram6000.triangel",
+    "dram6000.prophet": f"python3 compiler.py -p prophet -c config_dram6000 -e dram6000.prophet",
+    "dram6000.prism": f"python3 compiler.py -p prism -c config_dram6000 -e dram6000.prism",
 
-    "cache1_4.baseline": "python3 compiler.py -p baseline -c config_cache1_4 -e cache1_4.baseline",
-    "cache1_4.triangel": "python3 compiler.py -p triangel -c config_cache1_4 -e cache1_4.triangel",
-    "cache1_4.prophet": "python3 compiler.py -p prophet -c config_cache1_4 -e cache1_4.prophet",
-    "cache1_4.prism": "python3 compiler.py -p prism -c config_cache1_4 -e cache1_4.prism",
+    "cache1_4.baseline": f"python3 compiler.py -p baseline -c config_cache1_4 -e cache1_4.baseline",
+    "cache1_4.triangel": f"python3 compiler.py -p triangel -c config_cache1_4 -e cache1_4.triangel",
+    "cache1_4.prophet": f"python3 compiler.py -p prophet -c config_cache1_4 -e cache1_4.prophet",
+    "cache1_4.prism": f"python3 compiler.py -p prism -c config_cache1_4 -e cache1_4.prism",
 
-    "cache1_2.baseline": "python3 compiler.py -p baseline -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.baseline",
-    "cache1_2.triangel": "python3 compiler.py -p triangel -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.triangel",
-    "cache1_2.prophet": "python3 compiler.py -p prophet -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.prophet",
-    "cache1_2.prism": "python3 compiler.py -p prism -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.prism",
+    "cache1_2.baseline": f"python3 compiler.py -p baseline -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.baseline",
+    "cache1_2.triangel": f"python3 compiler.py -p triangel -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.triangel",
+    "cache1_2.prophet": f"python3 compiler.py -p prophet -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.prophet",
+    "cache1_2.prism": f"python3 compiler.py -p prism -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.prism",
 
 
 }
 
 collect_command = {
-    "Fig10": ["python3 get_result.py -p triangel prophet prism -o ./results/basic -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
-    "Fig11": ["python3 get_result.py -p triangel prophet prism -o ./results/basic -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
-    "Fig12": ["python3 energy/energy.py"],
-    "Fig13": ["python3 get_result.py -p triangel prophet prism -o ./results/basic -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
-    "Fig16": ["python3 get_result.py -p cache0.5_2.baseline cache1_2.baseline cache1_4.baseline baseline \
+    "Fig10": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/basic -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
+    "Fig11": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/basic -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
+    "Fig12": [f"python3 energy/energy.py"],
+    "Fig13": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/metadata -m MT_lookups MT_inserts MT_hits L2C_USEFUL"],
+    "Fig16": [f"python3 get_result.py -p cache0.5_2.baseline cache1_2.baseline cache1_4.baseline baseline \
                          cache0.5_2.triangel cache1_2.triangel cache1_4.triangel triangel      \
                          cache0.5_2.prophet cache1_2.prophet  cache1_4.prophet  prophet       \
                          cache0.5_2.prism cache1_2.prism    cache1_4.prism    prism         \
                       -a cache0.5_2.baseline cache1_2.baseline cache1_4.baseline cache2_4.baseline \
                          cache0.5_2.triangel cache1_2.triangel cache1_4.triangel cache2_4.triangel \
                          cache0.5_2.prophet cache1_2.prophet  cache1_4.prophet  cache2_4.prophet  \
-                         cache0.5_2.prism cache1_2.prism    cache1_4.prism    cache2_4.prism    -o ./results/sens/cache -m IPCI",
-              "python3 get_result.py -p dram1200.baseline dram1200.triangel dram1200.prophet dram1200.prism \
+                         cache0.5_2.prism cache1_2.prism    cache1_4.prism    cache2_4.prism    -o {RESULT_PATH}/sens/cache -m IPCI",
+              f"python3 get_result.py -p dram1200.baseline dram1200.triangel dram1200.prophet dram1200.prism \
                          dram2400.baseline dram2400.triangel dram2400.prophet dram2400.prism \
                          dram3600.baseline dram3600.triangel dram3600.prophet dram3600.prism \
                          baseline     triangel          prophet          prism          \
@@ -185,18 +185,20 @@ collect_command = {
                          2400.baseline 2400.triangel 2400.prophet 2400.prism \
                          3600.baseline 3600.triangel 3600.prophet 3600.prism \
                          4800.baseline 4800.triangel 4800.prophet 4800.prism \
-                         6000.baseline 6000.triangel 6000.prophet 6000.prism -o ./results/sens/dram -m IPCI",
-              "python3 get_result.py -p l1ipcp.baseline   l1ipcp.triangel   l1ipcp.prophet   l1ipcp.prism  \
+                         6000.baseline 6000.triangel 6000.prophet 6000.prism -o {RESULT_PATH}/sens/dram -m IPCI",
+              f"python3 get_result.py -p l1ipcp.baseline   l1ipcp.triangel   l1ipcp.prophet   l1ipcp.prism  \
                          l1berti.baseline  l1berti.triangel  l1berti.prophet  l1berti.prism \
                          baseline     triangel          prophet          prism   \
                       -a IPCP.baseline   IPCP.triangel   IPCP.prophet   IPCP.prism  \
                          Berti.baseline  Berti.triangel  Berti.prophet  Berti.prism \
-                         Stride.baseline Stride.triangel Stride.prophet Stride.prism  -o ./results/sens/l1spatial -m IPCI"],
-    "Fig18": ["python3 get_result.py -p baseline prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-pol prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-pol \
-                      -a prism-none    prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-pol prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-pol -o ./results/ablation -m IPCI"]
+                         Stride.baseline Stride.triangel Stride.prophet Stride.prism  -o {RESULT_PATH}/sens/l1spatial -m IPCI"],
+    "Fig18": [f"python3 get_result.py -p baseline prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-pol prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-pol \
+                      -a prism-none    prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-pol prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-pol -o {RESULT_PATH}/ablation -m IPCI"]
 }
 
 required_executables = executable_list[args.figure]
+
+os.makedirs(f"{CHAMPSIM_PATH}/bin", exist_ok=True)
 
 for exe in required_executables:
     if exe not in os.listdir(f"{CHAMPSIM_PATH}/bin"):
@@ -215,8 +217,6 @@ if args.phase == "Compile":
     print("Goodbye")
     exit(0)
 
-
-
 trace_name_set = set()
 
 with open("./utils/tracelist", "r") as f:
@@ -228,6 +228,7 @@ for prefix in ["ligra","gap","spec17","ml","google"]:
             trace_name_set.update(traces)
 
 from pathlib import Path
+os.makedirs(LOG_PATH, exist_ok=True)
 
 def check_results(log_path, list_exe, set_trace):
     success = []
@@ -238,7 +239,7 @@ def check_results(log_path, list_exe, set_trace):
         exe_dir = log_path / exe_name
 
         if not exe_dir.exists():
-            print(f"[Missing Directory] {exe_dir}")
+            # print(f"[Missing Directory] {exe_dir}")
             for trace in set_trace:
                 failed.append((exe_name, trace, "directory missing"))
             continue
@@ -283,13 +284,13 @@ def check_results(log_path, list_exe, set_trace):
 success, failed = check_results(Path(LOG_PATH), required_executables, trace_name_set)
 
 if failed:
-    running_command = ["python3","runner.py","-p"]+required_executables+["-l","ligra","gap","spec17","ml","google","-s"]
+    running_command = [f"python3","runner.py","-p"]+required_executables+["-l","ligra","gap","spec17","ml","google","-s"]
     print(f"Results not ready, running ChampSim Task with {YELLOW}{' '.join(running_command)}{END}")
     subprocess.run(running_command)
     print("ChampSim task completed, checking result integrity...")
     success, failed = check_results(Path(LOG_PATH), required_executables, trace_name_set)
     if failed:
-        print(f"{RED}Aborted: Experimental results are incomplete, possibly due to an interrupted experiment.{END}")
+        print(f"{RED}Aborted: Experimental results are incomplete, possibly due to an interrupted experiment. Try running the experiment again.{END}")
         exit(0)
     else:
         print(f"{GREEN}All experiments completed successfully.{END}")
@@ -307,20 +308,22 @@ print(f"Collecting results with {YELLOW}{' '.join(collect_cmd)}{END}")
 for c in collect_cmd:
     subprocess.run(c,shell=True)
 
+os.makedirs(FIGURE_PATH, exist_ok=True)
+
 lst = os.listdir("figure-scripts")
 
 for l in lst:
     start = l.split("-")[0]
     if start == args.figure:
         print(f"Generating {args.figure} with {YELLOW}python3 {l}{END}")
-        subprocess.run(["python3", l], cwd="figure-scripts")
+        subprocess.run([f"python3", l], cwd="figure-scripts")
         break
-lst = os.listdir("figure-out")
+lst = os.listdir(FIGURE_PATH)
 find = False
 for l in lst:
     start = l.split("-")[0]
     if start == args.figure:
-        print(f"{GREEN}{args.figure} generated successfully: {END}figure-out/{l}")
+        print(f"{GREEN}{args.figure} generated successfully: {END}{FIGURE_PATH}/{l}")
         find = True
 
 if not find:

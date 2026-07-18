@@ -2,16 +2,16 @@
 import os
 from pathlib import Path
 
-script_path = Path(__file__).resolve()
-LYQ_PATH = script_path.parent.parent.parent.parent
+SCRIPTS_PATH = Path(__file__).resolve().parent.parent
+LYQ_PATH = SCRIPTS_PATH.parent.parent
 
-TRACE_PATH = os.path.join(LYQ_PATH, "trace")
-CHAMPSIM_PATH = os.path.join(LYQ_PATH, "PRISM")
-EXPR_PATH = os.path.join(CHAMPSIM_PATH, "scripts")
-LOG_PATH = os.path.join(LYQ_PATH, "PRISM_champsim_log")
-RESULT_PATH = os.path.join(EXPR_PATH, "result")
-HINT_PATH = os.path.join(EXPR_PATH, "hint")
+CHAMPSIM_PATH = SCRIPTS_PATH.parent
+TRACE_PATH = LYQ_PATH / "trace"
 
+EXPR_PATH = CHAMPSIM_PATH / "experiments"
+LOG_PATH = EXPR_PATH / "champsim_log"
+RESULT_PATH = EXPR_PATH / "results"
+FIGURE_PATH = EXPR_PATH / "figure_out"
 
 RED = '\033[91m'
 GREEN = '\033[92m'

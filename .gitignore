@@ -8,7 +8,7 @@ bin*/
 
 scripts/comp_errors/
 scripts/figure-out/
-scripts/results/
+experiments/
 
 **/*.o
 **/*.d

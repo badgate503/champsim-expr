@@ -9,9 +9,14 @@ Each Set is a group of bars; each group contains one bar per Prefetcher.
 """
 import argparse
 import os
+import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
+from utils.defs import *
 
 
 def plot_ipci(csv_path, out_dir):
@@ -98,8 +103,8 @@ def plot_ipci(csv_path, out_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Plot IPCI (Speedup) grouped by Set from average.csv")
-    parser.add_argument("csv", nargs="?", default="../results/basic/average.csv", help="Path to average.csv")
-    parser.add_argument("--out", default="../figure-out", help="Output directory")
+    parser.add_argument("csv", nargs="?", default=f"{RESULT_PATH}/basic/average.csv", help="Path to average.csv")
+    parser.add_argument("--out", default=f"{FIGURE_PATH}", help="Output directory")
     args = parser.parse_args()
     plot_ipci(args.csv, args.out)
 

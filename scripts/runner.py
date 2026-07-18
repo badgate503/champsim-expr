@@ -50,13 +50,10 @@ if not args.traces and not args.tracelist:
     print(f"{RED}No trace assigned. Job done{END}")
     sys.exit(1)
 
-# 读取 trace 名单
 trace_name_set = set()
 
 if args.traces is not None:
     trace_name_set.update(args.traces)
-
-
 
 # 支持 -l 多参数，每个参数为 tracelist 文件的一行前缀
 if args.tracelist is not None and len(args.tracelist) > 0:
@@ -65,10 +62,11 @@ if args.tracelist is not None and len(args.tracelist) > 0:
     for prefix in args.tracelist:
         for line in lines:
             if line.startswith(prefix + ":"):
-                # 取冒号后所有 trace 名字
                 traces = line.split(":", 1)[1].strip().split()
                 trace_name_set.update(traces)
                # print(f"Include {len(traces)} traces from {CYAN}{prefix}{END}: {RED}{' '.join(traces)}{END}\n")
+
+os.makedirs(LOG_PATH, exist_ok=True)
 log_path = LOG_PATH
 if args.output is not None:
     log_path = os.path.abspath(args.output)
@@ -82,7 +80,7 @@ for pp in args.prefetcher:
     if os.path.isdir(log_path + "/" + pp_basename):
         for fname in os.listdir(log_path + "/" + pp_basename):
             if fname.endswith(".log"):
-                trace_name = fname[:-4]  # 去掉 .log
+                trace_name = fname[:-4]  # remove .log
                 if trace_name in trace_name_set:
                     
                     with open(log_path + "/" + pp_basename + "/" + fname, "r") as f:
@@ -95,11 +93,6 @@ task_map = {}
 for t in task_set:
     key = t[0]
     task_map.setdefault(key, []).append(t[1])
-
-
-
-
-
 
 for pp in args.prefetcher:
     if pp in task_map:

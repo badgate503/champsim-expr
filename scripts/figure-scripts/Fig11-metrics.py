@@ -11,9 +11,13 @@ and three columns (Accuracy, Timeliness, Metadata Traffic). Uses 9pt Times New R
 """
 import argparse
 import os
+import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
+sys.path.append(str(Path(__file__).parent.parent))
+from utils.defs import *
 
 
 def plot_metrics_grouped(csv_path, out_dir):
@@ -131,8 +135,8 @@ def plot_metrics_grouped(csv_path, out_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Plot grouped prefetcher metrics from average.csv")
-    parser.add_argument("csv", nargs="?", default="../results/basic/average.csv", help="Path to average.csv")
-    parser.add_argument("--out", default="../figure-out", help="Output directory")
+    parser.add_argument("csv", nargs="?", default=f"{RESULT_PATH}/basic/average.csv", help="Path to average.csv")
+    parser.add_argument("--out", default=f"{FIGURE_PATH}", help="Output directory")
     args = parser.parse_args()
     plot_metrics_grouped(args.csv, args.out)
 

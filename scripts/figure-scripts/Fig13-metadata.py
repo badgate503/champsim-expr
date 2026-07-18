@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-
+import sys
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 
+sys.path.append(str(Path(__file__).parent.parent))
+from utils.defs import *
+
 BASE_DIR = Path(__file__).resolve().parent
-OUT_PATH = BASE_DIR.parent / "figure-out" / "Fig13-metadata.pdf"
+OUT_PATH = BASE_DIR.parent / FIGURE_PATH / "Fig13-metadata.pdf"
 FIG_SIZE = (3.5, 2.0)
 FONT_FAMILY = "Times New Roman"
 FONT_SIZE = 8
@@ -32,7 +35,7 @@ SET_LABELS = {
 
 
 def load_data() -> pd.DataFrame:
-	df = pd.read_csv(BASE_DIR.parent / "results" / "mdtraffic"  / "average.csv")
+	df = pd.read_csv(BASE_DIR.parent / RESULT_PATH / "metadata"  / "average.csv")
 	df.columns = df.columns.str.strip()
 	df["Set"] = df["Set"].astype(str).str.strip()
 	df["Prefetcher"] = df["Prefetcher"].astype(str).str.strip()

@@ -3,6 +3,10 @@
 from pathlib import Path
 import csv
 import copy
+import sys
+
+sys.path.append(str(Path(__file__).parent.parent))
+from utils.defs import *
 
 metrics = {
     "prophet": [
@@ -75,7 +79,7 @@ def read_energy_fields_with_arg(csv_path: Path, n):
     normalized = {k.strip(): v.strip() for k, v in zip(header, row)}
     return {field: normalized.get(field, "N/A") for field in TARGET_FIELDS}
 
-base_dir = Path(__file__).resolve().parent
+file_dir = Path(__file__).resolve().parent
 
 all_list=dict()
 
@@ -93,7 +97,7 @@ for group_name, modules in metrics.items():
         if module_name[0].isdigit():
             module_name_parsed = "_".join(module_name.split("_")[2:])
             print(module_name)
-            out_file = base_dir / f"{module_name_parsed}.out"
+            out_file = file_dir / "cacti_output" /f"{module_name_parsed}.out"
             if not out_file.exists():
                 print(f"  {module_name}: file not found ({out_file.name})")
                 continue
@@ -107,7 +111,7 @@ for group_name, modules in metrics.items():
                 print(f"    {field}: {values[field]}")
 
         else:
-            out_file = base_dir / f"{module_name}.out"
+            out_file = file_dir / "cacti_output" / f"{module_name}.out"
             if not out_file.exists():
                 print(f"  {module_name}: file not found ({out_file.name})")
                 continue
@@ -225,14 +229,13 @@ def calc_module_energy(module_values, module_access, cycles, frequency_mhz, bank
     },report
 
 
-trace_map = load_trace_map((base_dir / "../utils/tracelist").resolve())
-exprlog_dir = (base_dir / "../../../PRISM_champsim_log").resolve()
+trace_map = load_trace_map((SCRIPTS_PATH / "utils/tracelist").resolve())
 
 energy_result = {}
 
 print("[energy calculation]")
 for scheme_name, module_values_map in all_list.items():
-    scheme_dir = exprlog_dir / scheme_name
+    scheme_dir = LOG_PATH / scheme_name
     if not scheme_dir.exists():
         print(f"[{scheme_name}] result directory not found: {scheme_dir}")
         continue
@@ -324,8 +327,9 @@ for scheme_name, scheme_result in energy_result.items():
             "trace_energy": trace_data["total_energy_nj"],
         })
 
+os.makedirs(RESULT_PATH / "energy", exist_ok=True)
 
-csv_path = base_dir / "energy_result.csv"
+csv_path = RESULT_PATH / "energy" / "energy_result.csv"
 with csv_path.open("w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=["group_name", "set", "trace", "trace_energy"])
     writer.writeheader()
@@ -379,7 +383,7 @@ for scheme_name in target_schemes:
         })
 
 
-normalized_csv_path = base_dir / "normalized_energy.csv"
+normalized_csv_path = RESULT_PATH / "energy" / "normalized_energy.csv"
 with normalized_csv_path.open("w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=["group_name", "set", "normalized_energy"])
     writer.writeheader()
