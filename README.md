@@ -17,7 +17,7 @@
   <summary>Table of Contents</summary>
   <ol>
     <li><a href="#what-is-PRISM">What is PRISM?</a></li>
-    <li><a href="#setup">Set Up</a></li>
+    <li><a href="#set-up">Set Up</a></li>
     <li><a href="#preparing-traces">Preparing Traces</a></li>
     <li><a href="#running-experiments">Running Experiments</a></li>
     <li><a href="#understanding-results">Understanding Results</a></li>

@@ -290,12 +290,12 @@ if __name__ == "__main__":
                 baseline_result = {}
                 average = {pf:[] for pf in PF_LIST}
                 for trace in TRACE_LIST[set_name]:
-                    baseline_result[trace] = get_measure(LOG_PATH +"/"+ BASELINE + "/" + (trace+".log"))
+                    baseline_result[trace] = get_measure(LOG_PATH / BASELINE / f"{trace}.log")
                     
                     for pf in PF_LIST:
-                        if os.path.exists(LOG_PATH +"/"+ pf + "/" + (trace+".log")):
-                            #print("Reading from: " + LOG_PATH +"/"+ pf + "/" + (trace+".log"))
-                            result = get_measure(LOG_PATH +"/"+ pf + "/" + (trace+".log"), baseline_result[trace])
+                        if os.path.exists(LOG_PATH / pf / f"{trace}.log"):
+                            #print("Reading from: " + str(LOG_PATH / pf / f"{trace}.log"))
+                            result = get_measure(LOG_PATH / pf / f"{trace}.log", baseline_result[trace])
                             if args.alias is not None:
                                 f.write(trace + "," + pf_alias_map[pf] + "," + ",".join([result[m] for m in met]) + "\n")
                             else:

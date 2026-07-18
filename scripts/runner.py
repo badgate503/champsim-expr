@@ -77,13 +77,13 @@ for pp in args.prefetcher:
         pp_basename = pp[:-3]
     else:
         pp_basename = pp    
-    if os.path.isdir(log_path + "/" + pp_basename):
-        for fname in os.listdir(log_path + "/" + pp_basename):
+    if os.path.isdir(log_path / f"{pp_basename}"):
+        for fname in os.listdir(log_path / f"{pp_basename}"):
             if fname.endswith(".log"):
                 trace_name = fname[:-4]  # remove .log
                 if trace_name in trace_name_set:
                     
-                    with open(log_path + "/" + pp_basename + "/" + fname, "r") as f:
+                    with open(log_path / f"{pp_basename}" / f"{fname}", "r") as f:
                         if "ChampSim completed all CPUs" in f.read():
                             if args.skip:
                                 task_set.remove((pp, trace_name, log_path))
@@ -100,24 +100,7 @@ for pp in args.prefetcher:
         out_path = f"{LOG_PATH}/{pp}"
         if args.output is not None:
             out_path = os.path.abspath(args.output+f"/{pp}")
-        # print(f"\n{'='*60}\n")
-        # print(f"> Executable: {CYAN}../bin/{pp}{END}")
-        # print(f"> Warm-up: {CYAN}{WARM_UP}{END}, Interval: {CYAN}{INTERVAL}{END}")
-        
-        # os.system(f"stat ../bin/{pp} | grep 最近更改")
-        # if os.path.exists(f"../bin/champsim_config_{pp}.json"):
-        #     with open(f"../bin/champsim_config_{pp}.json", "r", encoding="utf-8") as f:
-        #         data = json.load(f)
-        #         print(f"> L2C Config: {CYAN}{data['L2C']}{END}")
-        # else:
-        #     print(f"> L2C Config: (File not exist)")
-        # print(f"> Traces: {YELLOW}{' '.join(task_map[pp])}{END}")
-        # if mode_is_mc:
-        #     print(f"> Logs will be saved to {out_path}/ as {YELLOW}.log{END} (Champsim log) and {YELLOW}.txt{END} (Miss cause classification log) files")
-        # else:
-        #     print(f"> Logs will be saved to {out_path}/ as {YELLOW}.log{END} (Champsim log) files")
-        
-        
+
         if f"{pp}" not in os.listdir("../bin/"):
             print(f"> {RED}Error: Executable {pp} not found in ../bin/. Please compile first with --compile flag.{END}")
             sys.exit(1)
@@ -153,7 +136,7 @@ def launch_task(task):
                 f.write(f"DRAM_{conf[0]}:{conf[1]}\n")
         f.write("\n")
         f.flush()
-        process = subprocess.run(
+        subprocess.run(
             work,
             stdout=f,
             stderr=f,

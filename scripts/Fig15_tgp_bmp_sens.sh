@@ -114,3 +114,6 @@ minutes=$(( (duration % 3600) / 60 ))
 seconds=$((duration % 60))
 
 echo "运行耗时: ${hours}小时 ${minutes}分钟 ${seconds}秒"
+
+python3 get_result.py -p acc_low15_high55 acc_low15_high65 acc_low15_high85 acc_low15_high95 acc_low05_high75 acc_low10_high75 acc_low20_high75 acc_low25_high75 -o ../experiments/results/tgp -m IPCI
+python3 get_result.py -p k_1.00_1.00 k_1.25_1.25 k_1.75_1.75 k_2.00_2.00 -o ./results/fig15_tgp_bmp_sens -o ../experiments/results/bmp -m IPCI
