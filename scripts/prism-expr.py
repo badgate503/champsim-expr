@@ -206,8 +206,8 @@ collect_command = {
     "Fig11": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/basic -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
     "Fig12": [f"python3 energy/energy.py"],
     "Fig13": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/metadata -m MT_lookups MT_inserts MT_hits L2C_USEFUL"],
-    "Fig14": [f"python3 get_result.py -p pcq-1 pcq-2 pcq-4 pcq-8 pcq-12 pcq-16 -o {RESULT_PATH}/sens_parameters/pcq -m IPCI PCM_accuracy PCM_laterate",
-              f"python3 get_result.py -p pat-12k pat-24k pat-48k pat-96k pat-144k pat-192k -o {RESULT_PATH}/sens_parameters/pat -m IPCI PCM_accuracy PCM_laterate"],
+    "Fig14": [f"python3 get_result.py -p pcq-1 pcq-2 pcq-4 pcq-8 pcq-12 pcq-16 -o {RESULT_PATH}/sens_pctp/pcq -m IPCI PCM_accuracy PCM_laterate",
+              f"python3 get_result.py -p pat-12k pat-24k pat-48k pat-96k pat-144k pat-192k -o {RESULT_PATH}/sens_pctp/pat -m IPCI PCM_accuracy PCM_laterate"],
     "Fig16": [f"python3 get_result.py -p cache0.5_2.baseline cache1_2.baseline cache1_4.baseline baseline \
                          cache0.5_2.triangel cache1_2.triangel cache1_4.triangel triangel      \
                          cache0.5_2.prophet cache1_2.prophet  cache1_4.prophet  prophet       \
@@ -232,8 +232,8 @@ collect_command = {
                       -a IPCP.baseline   IPCP.triangel   IPCP.prophet   IPCP.prism  \
                          Berti.baseline  Berti.triangel  Berti.prophet  Berti.prism \
                          Stride.baseline Stride.triangel Stride.prophet Stride.prism  -o {RESULT_PATH}/sens_configurations/l1spatial -m IPCI"],
-    "Fig18": [f"python3 get_result.py -p baseline prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-pol prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-pol \
-                      -a prism-none    prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-pol prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-pol -o {RESULT_PATH}/ablation -m IPCI"]
+    "Fig18": [f"python3 get_result.py -p baseline prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-irp prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-irp \
+                      -a prism-none prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-irp prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-irp -o {RESULT_PATH}/ablation -m IPCI"]
 }
 
 required_executables = executable_list[args.figure]

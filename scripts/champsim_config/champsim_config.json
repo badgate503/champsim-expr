@@ -1,5 +1,5 @@
 {
-    "executable_name": "pcq-2",
+    "executable_name": "pat-192k",
     "block_size": 64,
     "page_size": 4096,
     "heartbeat_frequency": 10000000,

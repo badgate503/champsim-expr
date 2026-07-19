@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Tuple
 
 import pandas as pd
-
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
 from utils.defs import *
 
 FILES = [f"{RESULT_PATH}/sens_configurations/cache/average.csv", f"{RESULT_PATH}/sens_configurations/dram/average.csv", f"{RESULT_PATH}/sens_configurations/l1spatial/average.csv"]

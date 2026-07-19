@@ -9,12 +9,14 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
 from utils.defs import *
 
 
 BASE_DIR = Path(__file__).resolve().parent
 CSV_PATH = RESULT_PATH / "ablation" / "average.csv"
-OUT_PATH = RESULT_PATH / "figure_out" / "Fig18-ablation.pdf"
+OUT_PATH = EXPR_PATH / "figure_out" / "Fig18-ablation.pdf"
 
 FIG_SIZE = (8, 1.5)
 FONT_SIZE = 9
@@ -24,12 +26,12 @@ PREFETCHER_ORDER = [
 	"prism-ol-pctp",
 	"prism-ol-tgp",
 	"prism-ol-bmp",
-	"prism-ol-pol",
+	"prism-ol-irp",
 	"prism",
 	"prism-wo-pctp",
 	"prism-wo-tgp",
 	"prism-wo-bmp",
-	"prism-wo-pol",
+	"prism-wo-irp",
 ]
 
 PREFETCHER_LABELS = {
@@ -37,13 +39,13 @@ PREFETCHER_LABELS = {
 	"prism-ol-pctp": "+PCTP",
 	"prism-ol-tgp": "+TGP",
 	"prism-ol-bmp": "+BMP",
-	"prism-ol-pol": "+IRP",
+	"prism-ol-irp": "+IRP",
 	"prism-none": r"Baseline",
 	"prism": "PRISM",
 	"prism-wo-pctp": "−PCTP",
 	"prism-wo-tgp": "−TGP",
 	"prism-wo-bmp": "−BMP",
-	"prism-wo-pol": "−IRP",
+	"prism-wo-irp": "−IRP",
 }
 
 SET_ORDER = ["ligra", "gap", "spec17", "ml", "google", "Average"]

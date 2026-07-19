@@ -99,7 +99,7 @@ public:
   int alloc_sets;
   int max_sets;
 
-  prismPCAddressTable(int size, int num_ways) : alloc_sets(0), max_sets(MAX_WAY_PAT * N_LLC_SET), Super(size, num_ways) {}
+  prismPCAddressTable(int size, int num_ways) : alloc_sets(size / PAT_ASSOC), max_sets(size / PAT_ASSOC), Super(size, num_ways) {}
 
   void resize(int waysForPAT) { alloc_sets = waysForPAT * N_LLC_SET; }
 

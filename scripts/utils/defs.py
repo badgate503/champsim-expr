@@ -10,7 +10,6 @@ TRACE_PATH = LYQ_PATH / "trace"
 
 EXPR_PATH = CHAMPSIM_PATH / "experiments"
 LOG_PATH = EXPR_PATH / "champsim_log"
-# LOG_PATH = LYQ_PATH / "PRISM_champsim_log"
 RESULT_PATH = EXPR_PATH / "results"
 FIGURE_PATH = EXPR_PATH / "figure_out"
 

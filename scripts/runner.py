@@ -33,7 +33,7 @@ parser.add_argument("--traces", "-t", nargs="+", help="Name(s) of the trace(s) t
 parser.add_argument("--tracelist", "-l", nargs="*", type=str, help="Name(s) of the trace Set(s) to run (e.g., ligra gap spec17 ml google).")
 parser.add_argument("--output", "-o", help="Directory to redirect experiment results to")
 parser.add_argument("--skip", "-s", action="store_true", help="Skip re-running those whose output files already exist; otherwise, overwrite previous results")
-parser.add_argument("--nproc", "-j", type=int, default=90, help="Number of parallel jobs to use")
+parser.add_argument("--nproc", "-j", type=int, default=None, help="Number of parallel jobs to use (default: use all available cores)")
 
 args = parser.parse_args()
 
@@ -106,8 +106,8 @@ for pp in args.prefetcher:
             sys.exit(1)
 
 task_lines = ', '.join([f'{YELLOW}{p}{END}@{RED}{t}{END}' for p, t, log_path in task_set])
-n_proc = args.nproc
-print(f"\nNumber of Champsim tasks: {len(task_set)}. Number of processes: {n_proc}")
+nproc = args.nproc if args.nproc is not None else os.cpu_count()
+print(f"\nNumber of Champsim tasks: {len(task_set)}. Number of processes: {nproc}")
 
 def launch_task(task):
     p, w, log = task
@@ -151,7 +151,7 @@ if __name__ == '__main__':
     
     # 2. 创建进程池
     # total 参数告诉 tqdm 总共有多少个任务，以便正确计算百分比
-    with Pool(processes=n_proc) as pool:
+    with Pool(processes=nproc) as pool:
         results = []
         
         # 使用 pool.imap 结合 tqdm 动态显示进度
