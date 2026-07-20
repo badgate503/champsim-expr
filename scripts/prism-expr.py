@@ -23,8 +23,8 @@ WARM_UP = 50_000_000
 INTERVAL = 200_000_000
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--figure", "-f", choices=["Fig10", "Fig11", "Fig12", "Fig13","Fig14", "Fig16", "Fig18"] , help="Assign which figure to generate (Only Figure 10, 11, 12, 13, 16 and 18 are available)")
-parser.add_argument("--phase", "-p", choices=["Compile", "Run", "Draw", "All"], help="Assign which phase to run, use 'All' to run all phases")
+parser.add_argument("--figure", "-f", choices=["Fig10", "Fig11", "Fig12", "Fig13","Fig14", "Fig15", "Fig16", "Fig18", "Fig19"] , help="Assign which figure to generate")
+parser.add_argument("--phase", "-p", choices=["Compile", "Run", "Draw", "All"],default="All", help="Assign which phase to run, use 'All' to run all phases")
 
 args = parser.parse_args()
 
@@ -67,6 +67,22 @@ executable_list = {
         "pat-96k",
         "pat-144k",
         "pat-192k"
+    ],
+    "Fig15": [
+        "baseline",
+        "prism",
+        "acc_low15_high55",
+        "acc_low15_high65",
+        "acc_low15_high85",
+        "acc_low15_high95",
+        "acc_low05_high75",
+        "acc_low10_high75",
+        "acc_low20_high75",
+        "acc_low25_high75",
+        "k_1.00_1.00",
+        "k_1.25_1.25",
+        "k_1.75_1.75",
+        "k_2.00_2.00"
     ],
     "Fig16": [
         "l1ipcp.baseline",
@@ -117,6 +133,11 @@ executable_list = {
         "prism-wo-bmp",
         "prism-wo-irp",
         "prism"
+    ],
+    "Fig19": [
+        "prism",
+        "baseline-inf",
+        "ideal-tp"
     ]
 }
 
@@ -175,19 +196,36 @@ compile_command = {
     "cache1_2.prophet": f"python3 compiler.py -p prophet -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.prophet",
     "cache1_2.prism": f"python3 compiler.py -p prism -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.prism",
 
-    "pcq-1": f"python3 compiler.py -p prism -f INF_PAT INDEPENDENT_PAT PCQ_SIZE=1 -e pcq-1",
-    "pcq-2": f"python3 compiler.py -p prism -f INF_PAT INDEPENDENT_PAT PCQ_SIZE=2 -e pcq-2",
-    "pcq-4": f"python3 compiler.py -p prism -f INF_PAT INDEPENDENT_PAT PCQ_SIZE=4 -e pcq-4",
-    "pcq-8": f"python3 compiler.py -p prism -f INF_PAT INDEPENDENT_PAT PCQ_SIZE=8 -e pcq-8",
-    "pcq-12": f"python3 compiler.py -p prism -f INF_PAT INDEPENDENT_PAT PCQ_SIZE=12 -e pcq-12",
-    "pcq-16": f"python3 compiler.py -p prism -f INF_PAT INDEPENDENT_PAT PCQ_SIZE=16 -e pcq-16",
+    "pcq-1": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=1 -e pcq-1",
+    "pcq-2": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=2 -e pcq-2",
+    "pcq-4": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=4 -e pcq-4",
+    "pcq-8": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=8 -e pcq-8",
+    "pcq-12": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=12 -e pcq-12",
+    "pcq-16": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=16 -e pcq-16",
 
-    "pat-12k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=12*1024 -e pat-12k",
-    "pat-24k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=24*1024 -e pat-24k",
-    "pat-48k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=48*1024 -e pat-48k",
-    "pat-96k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=96*1024 -e pat-96k",
-    "pat-144k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=144*1024 -e pat-144k",
-    "pat-192k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=192*1024 -e pat-192k"
+    "pat-12k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=12*1024 -e pat-12k",
+    "pat-24k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=24*1024 -e pat-24k",
+    "pat-48k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=48*1024 -e pat-48k",
+    "pat-96k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=96*1024 -e pat-96k",
+    "pat-144k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=144*1024 -e pat-144k",
+    "pat-192k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=192*1024 -e pat-192k",
+
+    "acc_low15_high55": f"python3 compiler.py -p prism -f T_ACC_LOW=0.15 T_ACC_HIGH=0.55 -e acc_low15_high55",
+    "acc_low15_high65": f"python3 compiler.py -p prism -f T_ACC_LOW=0.15 T_ACC_HIGH=0.65 -e acc_low15_high65",
+    "acc_low15_high85": f"python3 compiler.py -p prism -f T_ACC_LOW=0.15 T_ACC_HIGH=0.85 -e acc_low15_high85",
+    "acc_low15_high95": f"python3 compiler.py -p prism -f T_ACC_LOW=0.15 T_ACC_HIGH=0.95 -e acc_low15_high95",
+    "acc_low05_high75": f"python3 compiler.py -p prism -f T_ACC_LOW=0.05 T_ACC_HIGH=0.75 -e acc_low05_high75",
+    "acc_low10_high75": f"python3 compiler.py -p prism -f T_ACC_LOW=0.10 T_ACC_HIGH=0.75 -e acc_low10_high75",
+    "acc_low20_high75": f"python3 compiler.py -p prism -f T_ACC_LOW=0.20 T_ACC_HIGH=0.75 -e acc_low20_high75",
+    "acc_low25_high75": f"python3 compiler.py -p prism -f T_ACC_LOW=0.25 T_ACC_HIGH=0.75 -e acc_low25_high75",
+
+    "k_1.00_1.00": f"python3 compiler.py -p prism -f K_AGGR=1.00 K_CONS=1.00 -e k_1.00_1.00",
+    "k_1.25_1.25": f"python3 compiler.py -p prism -f K_AGGR=1.25 K_CONS=1.25 -e k_1.25_1.25",
+    "k_1.75_1.75": f"python3 compiler.py -p prism -f K_AGGR=1.75 K_CONS=1.75 -e k_1.75_1.75",
+    "k_2.00_2.00": f"python3 compiler.py -p prism -f K_AGGR=2.00 K_CONS=2.00 -e k_2.00_2.00",
+
+    "baseline-inf": f"python3 compiler.py -p inftable -e baseline-inf",
+    "ideal-tp": f"python3 compiler.py -p no -f OPT_PREFETCH -e ideal-tp"
 }
 
 run_trace_list = {
@@ -198,16 +236,20 @@ run_trace_list = {
     "Fig14": ["google"],
     "Fig15": ["ligra", "gap", "spec17", "ml", "google"],
     "Fig16": ["ligra", "gap", "spec17", "ml", "google"],
-    "Fig18": ["ligra", "gap", "spec17", "ml", "google"]
+    "Fig18": ["ligra", "gap", "spec17", "ml", "google"],
+    "Fig19": ["ligra", "gap", "spec17", "ml", "google"]
 }
 
 collect_command = {
-    "Fig10": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/basic -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
-    "Fig11": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/basic -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
+    "Fig10": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/Fig10 -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
+    "Fig11": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/Fig11 -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
     "Fig12": [f"python3 energy/energy.py"],
-    "Fig13": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/metadata -m MT_lookups MT_inserts MT_hits L2C_USEFUL"],
-    "Fig14": [f"python3 get_result.py -p pcq-1 pcq-2 pcq-4 pcq-8 pcq-12 pcq-16 -o {RESULT_PATH}/sens_pctp/pcq -m IPCI PCM_accuracy PCM_laterate",
-              f"python3 get_result.py -p pat-12k pat-24k pat-48k pat-96k pat-144k pat-192k -o {RESULT_PATH}/sens_pctp/pat -m IPCI PCM_accuracy PCM_laterate"],
+    "Fig13": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/Fig13 -m MT_lookups MT_inserts MT_hits L2C_USEFUL"],
+    "Fig14": [f"python3 get_result.py -p pcq-1 pcq-2 pcq-4 pcq-8 pcq-12 pcq-16 -o {RESULT_PATH}/Fig14/pcq -m IPCI PCM_accuracy PCM_laterate",
+              f"python3 get_result.py -p pcq-8 pat-12k pat-24k pat-48k pat-96k pat-144k pat-192k -o {RESULT_PATH}/Fig14/pat -m IPCI PCM_useful_prefetches"],
+    "Fig15": [f"python3 get_result.py -p acc_low15_high55 acc_low15_high65 prism acc_low15_high85 acc_low15_high95 acc_low05_high75 acc_low10_high75 acc_low20_high75 acc_low25_high75 \
+                                      -a acc_low15_high55 acc_low15_high65 acc_low15_high75 acc_low15_high85 acc_low15_high95 acc_low05_high75 acc_low10_high75 acc_low20_high75 acc_low25_high75 -o {RESULT_PATH}/Fig15/sens_acc -m IPCI",
+              f"python3 get_result.py -p k_1.00_1.00 k_1.25_1.25 prism k_1.75_1.75 k_2.00_2.00 -a k_1.00 k_1.25 k_1.50 k_1.75 k_2.00 -o {RESULT_PATH}/Fig15/sens_k -m IPCI"],
     "Fig16": [f"python3 get_result.py -p cache0.5_2.baseline cache1_2.baseline cache1_4.baseline baseline \
                          cache0.5_2.triangel cache1_2.triangel cache1_4.triangel triangel      \
                          cache0.5_2.prophet cache1_2.prophet  cache1_4.prophet  prophet       \
@@ -215,7 +257,7 @@ collect_command = {
                       -a cache0.5_2.baseline cache1_2.baseline cache1_4.baseline cache2_4.baseline \
                          cache0.5_2.triangel cache1_2.triangel cache1_4.triangel cache2_4.triangel \
                          cache0.5_2.prophet cache1_2.prophet  cache1_4.prophet  cache2_4.prophet  \
-                         cache0.5_2.prism cache1_2.prism    cache1_4.prism    cache2_4.prism    -o {RESULT_PATH}/sens_configurations/cache -m IPCI",
+                         cache0.5_2.prism cache1_2.prism    cache1_4.prism    cache2_4.prism    -o {RESULT_PATH}/Fig16/cache -m IPCI",
               f"python3 get_result.py -p dram1200.baseline dram1200.triangel dram1200.prophet dram1200.prism \
                          dram2400.baseline dram2400.triangel dram2400.prophet dram2400.prism \
                          dram3600.baseline dram3600.triangel dram3600.prophet dram3600.prism \
@@ -225,15 +267,16 @@ collect_command = {
                          2400.baseline 2400.triangel 2400.prophet 2400.prism \
                          3600.baseline 3600.triangel 3600.prophet 3600.prism \
                          4800.baseline 4800.triangel 4800.prophet 4800.prism \
-                         6000.baseline 6000.triangel 6000.prophet 6000.prism -o {RESULT_PATH}/sens_configurations/dram -m IPCI",
+                         6000.baseline 6000.triangel 6000.prophet 6000.prism -o {RESULT_PATH}/Fig16/dram -m IPCI",
               f"python3 get_result.py -p l1ipcp.baseline   l1ipcp.triangel   l1ipcp.prophet   l1ipcp.prism  \
                          l1berti.baseline  l1berti.triangel  l1berti.prophet  l1berti.prism \
                          baseline     triangel          prophet          prism   \
                       -a IPCP.baseline   IPCP.triangel   IPCP.prophet   IPCP.prism  \
                          Berti.baseline  Berti.triangel  Berti.prophet  Berti.prism \
-                         Stride.baseline Stride.triangel Stride.prophet Stride.prism  -o {RESULT_PATH}/sens_configurations/l1spatial -m IPCI"],
+                         Stride.baseline Stride.triangel Stride.prophet Stride.prism  -o {RESULT_PATH}/Fig16/l1spatial -m IPCI"],
     "Fig18": [f"python3 get_result.py -p baseline prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-irp prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-irp \
-                      -a prism-none prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-irp prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-irp -o {RESULT_PATH}/ablation -m IPCI"]
+                      -a prism-none prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-irp prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-irp -o {RESULT_PATH}/Fig18 -m IPCI"],
+    "Fig19": [f"python3 get_result.py -p prism baseline-inf ideal-tp -o {RESULT_PATH}/Fig19 -m IPCI"]
 }
 
 required_executables = executable_list[args.figure]
@@ -242,14 +285,16 @@ os.makedirs(f"{CHAMPSIM_PATH}/bin", exist_ok=True)
 
 
 if args.phase == "Compile" or args.phase == "All":
+    print(f"{CYAN}[1] Compilation {END}\n")
     for exe in required_executables:
         if exe not in os.listdir(f"{CHAMPSIM_PATH}/bin"):
-            print(f"Executable {UNDERLINE}{exe}{END}: Compiling with {YELLOW}{compile_command[exe]}{END} ...")
+            print(f"\n● Executable {UNDERLINE}{exe}{END}: Compiling with {YELLOW}{compile_command[exe]}{END}")
+            print("-"*20+"LOG"+"-"*20)
             subprocess.run(compile_command[exe], shell=True)
+            print("-"*43)
 
     for exe in required_executables:
         if exe not in os.listdir(f"{CHAMPSIM_PATH}/bin"):
-            print(f"")
             print(f"Aborted: {RED}Executable {exe} not found, possibly due to a compilation failure{END}")
             exit(0)
         else:
@@ -268,7 +313,7 @@ for prefix in run_trace_list[args.figure]:
         if line.startswith(prefix + ":"):
             traces = line.split(":", 1)[1].strip().split()
             trace_name_set.update(traces)
-print(trace_name_set)
+
 
 from pathlib import Path
 os.makedirs(LOG_PATH, exist_ok=True)
@@ -310,31 +355,25 @@ def check_results(log_path, list_exe, set_trace):
             else:
                 failed.append((exe_name, trace_name, "not completed"))
 
-    # 输出统计
-    total = len(list_exe) * len(set_trace)
-    print("=" * 60)
-    print(f"Total experiments : {total}")
-    print(f"Completed         : {len(success)}")
-    print(f"Incomplete        : {len(failed)}")
-
-    if failed:
-        print("\nFailed experiments:")
-        for exe, trace, reason in failed:
-            print(f"  {exe:20} {trace:50} {reason}")
-
     return success, failed
 
 if args.phase == "Run" or args.phase == "All":
+    print(f"\n{CYAN}[2] Run Experiments {END}\n")
     success, failed = check_results(LOG_PATH, required_executables, trace_name_set)
-    print(required_executables,trace_name_set)
+
     if failed:
         running_command = [f"python3","runner.py","-p"]+required_executables+["-l"]+run_trace_list[args.figure] + ["-s"]
-        print(f"Results not ready, running ChampSim Task with {YELLOW}{' '.join(running_command)}{END}")
+        print(f"\n● Results not ready, running ChampSim Task with {YELLOW}{' '.join(running_command)}{END}")
+        print("-"*20+"LOG"+"-"*20)
         subprocess.run(running_command)
+        print("-"*43)
         print("ChampSim task completed, checking result integrity...")
         success, failed = check_results(LOG_PATH, required_executables, trace_name_set)
         if failed:
             print(f"{RED}Aborted: Experimental results are incomplete, possibly due to an interrupted experiment. Try running the experiment again.{END}")
+            print("\nFailed experiments:")
+            for exe, trace, reason in failed:
+                print(f"  {exe:20} {trace:50} {reason}")
             exit(0)
         else:
             print(f"{GREEN}All experiments completed successfully.{END}")
@@ -346,12 +385,13 @@ if args.phase == "Run":
     exit(0)
 
 collect_cmd = collect_command[args.figure]
+print(f"\n{CYAN}[3] Plot Figures {END}\n")
 
-print(f"Collecting results with {YELLOW}{' '.join(collect_cmd)}{END}")
-
+print(f"● Collecting results with {YELLOW}{' '.join(collect_cmd)}{END}")
+print("-"*20+"LOG"+"-"*20)
 for c in collect_cmd:
     subprocess.run(c,shell=True)
-
+print("-"*43)
 os.makedirs(FIGURE_PATH, exist_ok=True)
 
 lst = os.listdir("figure-scripts")
@@ -359,8 +399,10 @@ lst = os.listdir("figure-scripts")
 for l in lst:
     start = l.split("-")[0]
     if start == args.figure:
-        print(f"Generating {args.figure} with {YELLOW}python3 {l}{END}")
+        print(f"\n● Generating {args.figure} with {YELLOW}python3 {l}{END}")
+        print("-"*20+"LOG"+"-"*20)
         subprocess.run([f"python3", l], cwd="figure-scripts")
+        print("-"*43)
         break
 lst = os.listdir(FIGURE_PATH)
 find = False

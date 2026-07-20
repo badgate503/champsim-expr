@@ -10,11 +10,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sys
+
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.defs import *
 
 BASE_DIR = Path(__file__).resolve().parent
-CSV_PATH = RESULT_PATH / "energy" / "energy_result.csv"
+CSV_PATH = RESULT_PATH / "Fig12" / "normalized_energy.csv"
 
 SET_ORDER = ["ligra", "gap", "spec17", "ml", "google", "Average"]
 SET_LABELS = {
@@ -43,14 +44,14 @@ PF_COLORS = {
 
 def plot_energy(csv_path: Path, out_dir: Path) -> None:
     df = pd.read_csv(csv_path)
-    required = {"Prefetcher", "Set", "Energy"}
+    required = {"group_name", "set", "normalized_energy"}
     missing = required.difference(df.columns)
     if missing:
         raise ValueError(f"CSV is missing required columns: {sorted(missing)}")
 
-    df["Prefetcher"] = df["Prefetcher"].astype(str).str.strip()
-    df["Set"] = df["Set"].astype(str).str.strip()
-    df["Energy"] = pd.to_numeric(df["Energy"], errors="coerce")
+    df["Prefetcher"] = df["group_name"].astype(str).str.strip()
+    df["Set"] = df["set"].astype(str).str.strip()
+    df["Energy"] = pd.to_numeric(df["normalized_energy"], errors="coerce")
 
     orig_prefetchers = ['Triangel','Prophet',  'PRISM']
     print(orig_prefetchers)

@@ -15,6 +15,7 @@ import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.defs import *
@@ -135,7 +136,7 @@ def plot_metrics_grouped(csv_path, out_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Plot grouped prefetcher metrics from average.csv")
-    parser.add_argument("csv", nargs="?", default=f"{RESULT_PATH}/basic/average.csv", help="Path to average.csv")
+    parser.add_argument("csv", nargs="?", default=f"{RESULT_PATH}/Fig11/average.csv", help="Path to average.csv")
     parser.add_argument("--out", default=f"{FIGURE_PATH}", help="Output directory")
     args = parser.parse_args()
     plot_metrics_grouped(args.csv, args.out)

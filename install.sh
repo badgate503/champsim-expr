@@ -15,4 +15,7 @@ echo "==> Bootstrap vcpkg..."
 echo "==> Installing dependencies..."
 ./vcpkg/vcpkg install
 
+echo "==> Installing Python dependencies..."
+pip install -r requirements.txt
+
 echo "Completion!"

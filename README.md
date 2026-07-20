@@ -45,13 +45,13 @@ This repository has been tested with the following system configuration:
 
 ### 1. Clone the repository
 ```bash
-git clone 
+git clone https://github.com/YIQUAN-LIN/PRISM.git
 cd PRISM
 ```
 
 ### 2. Set up the environment
 ```bash
-bash setup.sh
+bash install.sh
 ```
 
 ## Preparing Traces
@@ -129,8 +129,6 @@ Each `FigureID` corresponds to a figure in the paper.
 To reproduce **Figure 10** with a single command:
 
 ```bash
-cd scripts
-
 python3 prism-expr.py -p All -f Fig10
 ```
 

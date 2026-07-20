@@ -13,15 +13,15 @@ sys.path.append(str(Path(__file__).parent.parent))
 from utils.defs import *
 
 BASE_DIR = Path(__file__).resolve().parent
-OUT_PATH = BASE_DIR.parent / FIGURE_PATH / "Fig13-metadata.pdf"
+OUT_PATH = FIGURE_PATH / "Fig13-metadata.pdf"
 FIG_SIZE = (3.5, 2.0)
 FONT_FAMILY = "Times New Roman"
 FONT_SIZE = 8
-PREFETCHERS = ["Triangel", "Prophet", "PRISM"]
+PREFETCHERS = ["triangel", "prophet", "prism"]
 COLORS = {
-	"Triangel": "#CCDA80",
-	"Prophet": "#59A3A4",
-	"PRISM": "#345470",
+	"triangel": "#CCDA80",
+	"prophet": "#59A3A4",
+	"prism": "#345470",
 }
 SET_ORDER = ["ligra", "gap", "spec17", "ml", "google", "Average"]
 SET_LABELS = {
@@ -35,7 +35,7 @@ SET_LABELS = {
 
 
 def load_data() -> pd.DataFrame:
-	df = pd.read_csv(BASE_DIR.parent / RESULT_PATH / "metadata"  / "average.csv")
+	df = pd.read_csv(RESULT_PATH / "Fig13"  / "average.csv")
 	df.columns = df.columns.str.strip()
 	df["Set"] = df["Set"].astype(str).str.strip()
 	df["Prefetcher"] = df["Prefetcher"].astype(str).str.strip()
@@ -288,7 +288,7 @@ def main() -> None:
 	]
 	fig.legend(
 		prefetcher_handles,
-		PREFETCHERS,
+		["Triangel", "Prophet", "PRISM"],
 		loc="upper center",
 		ncol=3,
 		frameon=False,

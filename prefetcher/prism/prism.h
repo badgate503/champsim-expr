@@ -47,9 +47,6 @@
 #define T_ACC_HIGH 0.75
 #endif
 #define PREFETCH_FILTER
-#define PF_FILTER_SIZE 256
-#define PF_FILTER_ASSOC 8
-#define PF_FILTER_TAG_WIDTH 10
 #else
 #define DEFAULT_LOOKAHEAD 0
 #define DEFAULT_DEGREE 1
@@ -73,6 +70,10 @@
 #define PC_TABLE_SIZE 512
 #define PC_TABLE_ASSOC 16
 #define PC_TABLE_TAG_WIDTH 12
+
+#define PF_FILTER_SIZE 256
+#define PF_FILTER_ASSOC 8
+#define PF_FILTER_TAG_WIDTH 10
 
 #define MIN_WAY_MARKOV 1
 #define MAX_WAY_MARKOV 8
@@ -264,11 +265,10 @@ public:
     uint64_t usefulPrefetchCount;
     uint64_t issuedPrefetchCount;
     uint64_t hitCount;
-    bool modified;
     deque<uint64_t> addrHistory;
 
     PCTableEntry(uint64_t _last_addr = 0, bool cache_hit = false)
-        : lookahead(DEFAULT_LOOKAHEAD), degree(DEFAULT_DEGREE), usefulPrefetchCount(0), issuedPrefetchCount(0), hitCount(cache_hit ? 1 : 0), modified(false)
+        : lookahead(DEFAULT_LOOKAHEAD), degree(DEFAULT_DEGREE), usefulPrefetchCount(0), issuedPrefetchCount(0), hitCount(cache_hit ? 1 : 0)
     {
       addrHistory.push_front(_last_addr);
     };

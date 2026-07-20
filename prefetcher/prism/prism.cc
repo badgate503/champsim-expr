@@ -213,9 +213,6 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
       }
 
       // update PC table entry
-      if (pc_entry->data.addrHistory.front() != block_addr) {
-        pc_entry->data.modified = true;
-      }
       if (pc_entry->data.addrHistory.size() > pc_entry->data.lookahead + 1) {
         pc_entry->data.addrHistory.pop_back();
       }

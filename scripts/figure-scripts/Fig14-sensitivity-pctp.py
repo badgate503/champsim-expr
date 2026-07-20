@@ -6,37 +6,38 @@ from pathlib import Path
 from typing import Optional
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from get_data import get_expr_result
+from utils.defs import *
 
 
-BASE_DIR = Path(__file__).resolve().parent
-ALL_CSV = BASE_DIR / "all.csv"
-OUT_PATH = BASE_DIR.parent / "results" / "SPD-TML-ACC" / "speedup-timeliness-accuracy.pdf"
+
+
+PCQ_CSV = RESULT_PATH / "Fig14" / "pcq" / "average.csv"
+PAT_CSV = RESULT_PATH / "Fig14" / "pat" / "average.csv"
+OUT_PATH = FIGURE_PATH / "Fig14-sensitivity-pctp.pdf"
 
 
 def parse_pat_size(prefetcher: str) -> Optional[int]:
     if not isinstance(prefetcher, str):
         return None
-    if not prefetcher.startswith("pctp") or not prefetcher.endswith("k"):
+    if not prefetcher.startswith("pat-") or not prefetcher.endswith("k"):
         return None
     try:
-        return int(prefetcher.removeprefix("pctp").removesuffix("k"))
+        return int(prefetcher.removeprefix("pat-").removesuffix("k"))
     except ValueError:
         return None
 
 
 def load_left_series() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
-    prefix = "pctpinf.a"
+    prefix = "pcq-"
     x_labels = [f"{prefix}{i}" for i in [1, 2, 4, 8, 12, 16]]
-    accuracy = []
-    timeliness = []
-    speedup = []
-    for x_label in x_labels:
-        result = get_expr_result(x_label, "google")
-        print(result)
-        accuracy.append(result["PCM_accuracy"])
-        timeliness.append(1 - result["PCM_laterate"])
-        speedup.append(result["IPCI"])
+    df = pd.read_csv(PCQ_CSV)
+    google = df[df["Set"] == "google"]
+
+    accuracy = google["PCM_accuracy"].tolist()
+    timeliness = google["PCM_laterate"].tolist()
+    for t in timeliness:
+        timeliness[timeliness.index(t)] = 1.0 - t
+    speedup = google["IPCI"].tolist()
 
     accuracy = np.array(accuracy)
     timeliness = np.array(timeliness)
@@ -81,16 +82,16 @@ def main() -> None:
     )
 
     x, accuracy, timeliness, speedup, labels = load_left_series()
-    google_df = load_google_all_data(ALL_CSV)
+    google_df = load_google_all_data(PAT_CSV)
     if google_df.empty:
         raise ValueError("No Google data found in SPD-TML-ACC/all.csv")
 
-    base_row = google_df[google_df["Prefetcher"] == "pctpinf.a8"]
+    base_row = google_df[google_df["Prefetcher"] == "pcq-8"]
     if base_row.empty:
-        raise ValueError("Missing pctpinf.a8 baseline in SPD-TML-ACC/all.csv")
+        raise ValueError("Missing pcq-8 baseline in SPD-TML-ACC/all.csv")
     base_useful = float(base_row["PCM_useful_prefetches"].iloc[0])
     if base_useful == 0.0:
-        raise ValueError("pctpinf.a8 PCM_useful_prefetches is zero; cannot compute coverage")
+        raise ValueError("pcq-8 PCM_useful_prefetches is zero; cannot compute coverage")
 
     pat_order = [12, 24, 48, 96, 144, 192]
     plot_df = google_df.copy()
@@ -133,9 +134,9 @@ def main() -> None:
     ax_bottom.plot(x, speedup, marker="o",markeredgecolor="black", markeredgewidth=0.2, linewidth=1.5, markersize=3.0, color=COLOR_SPEED)
     ax_bottom.set_ylabel("Speedup")
 
-    ax_bottom.set_ylim(1.03, 1.08)
-    ax_bottom.set_yticks([1.03, 1.08])
-    ax_bottom.set_yticklabels(["1.03", "1.08"])
+    ax_bottom.set_ylim(1.0, 1.1)
+    ax_bottom.set_yticks([1.0, 1.1])
+    ax_bottom.set_yticklabels(["1.00", "1.10"])
     ax_bottom.grid(ls="--", alpha=0.35)
     ax_bottom.set_xticks(x)
     ax_bottom.set_xticklabels(labels)

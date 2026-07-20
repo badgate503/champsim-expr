@@ -13,7 +13,7 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.defs import *
 
-FILES = [f"{RESULT_PATH}/sens_configurations/cache/average.csv", f"{RESULT_PATH}/sens_configurations/dram/average.csv", f"{RESULT_PATH}/sens_configurations/l1spatial/average.csv"]
+FILES = [f"{RESULT_PATH}/Fig16/cache/average.csv", f"{RESULT_PATH}/Fig16/dram/average.csv", f"{RESULT_PATH}/Fig16/l1spatial/average.csv"]
 
 
 def split_prefetcher(value: str) -> Tuple[str, str]:

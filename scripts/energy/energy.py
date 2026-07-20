@@ -327,9 +327,9 @@ for scheme_name, scheme_result in energy_result.items():
             "trace_energy": trace_data["total_energy_nj"],
         })
 
-os.makedirs(RESULT_PATH / "energy", exist_ok=True)
+os.makedirs(RESULT_PATH / "Fig12", exist_ok=True)
 
-csv_path = RESULT_PATH / "energy" / "energy_result.csv"
+csv_path = RESULT_PATH / "Fig12" / "energy_result.csv"
 with csv_path.open("w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=["group_name", "set", "trace", "trace_energy"])
     writer.writeheader()
@@ -383,7 +383,7 @@ for scheme_name in target_schemes:
         })
 
 
-normalized_csv_path = RESULT_PATH / "energy" / "normalized_energy.csv"
+normalized_csv_path = RESULT_PATH / "Fig12" / "normalized_energy.csv"
 with normalized_csv_path.open("w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=["group_name", "set", "normalized_energy"])
     writer.writeheader()

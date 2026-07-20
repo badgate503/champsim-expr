@@ -15,7 +15,7 @@ from utils.defs import *
 
 
 BASE_DIR = Path(__file__).resolve().parent
-CSV_PATH = RESULT_PATH / "ablation" / "average.csv"
+CSV_PATH = RESULT_PATH / "Fig18" / "average.csv"
 OUT_PATH = EXPR_PATH / "figure_out" / "Fig18-ablation.pdf"
 
 FIG_SIZE = (8, 1.5)
