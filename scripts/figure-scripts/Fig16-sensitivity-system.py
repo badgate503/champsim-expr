@@ -75,7 +75,7 @@ def build_config_map() -> Dict[str, Dict[str, Dict[str, float]]]:
 
     for config_type in CONFIG_TYPES:
         data: Dict[str, Dict[str, float]] = {}
-        csv_path = RESULT_PATH / "sens" / config_type / "average.csv"
+        csv_path = RESULT_PATH / "Fig16" / config_type / "average.csv"
         with csv_path.open(newline="") as fh:
             reader = csv.DictReader(fh)
             for row in reader:
@@ -290,7 +290,7 @@ def main() -> None:
 
     fig.subplots_adjust(top=0.78, bottom=0.35, left=0.07, right=0.98, wspace=0.1)
     
-    output_path = RESULT_PATH / "figure_out" / "Fig16-sensitivity-configurations.pdf"
+    output_path = FIGURE_PATH / "Fig16-sensitivity-system.pdf"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.01)
     plt.close(fig)

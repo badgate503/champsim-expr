@@ -98,24 +98,16 @@ uint32_t pctp::prefetcher_cache_operate(champsim::address addr, champsim::addres
   }
 
   // 3.2 update the pcTable
-  bool already_exist = false;
-  for (auto& a : pc_entry->data) {
-    if (a == block_addr) {
-      already_exist = true;
-      break;
-    }
-  }
-  if (!already_exist) {
-    pc_entry->data.push_front(block_addr);
-    if (pc_entry->data.size() > 1)
-      pc_entry->data.pop_back();
-  }
+
+  pc_entry->data.push_front(block_addr);
+  if (pc_entry->data.size() > 1)
+    pc_entry->data.pop_back();
+  
 
   // PC triggered prefetches
-  if (last_addr == 0 || last_addr == block_addr) //
-  // if (last_addr == block_addr) // pctp2
+  if (last_addr == 0 || last_addr == block_addr) 
   {
-    if (!cache_hit && PCQ.size() > 0) {
+    if (PCQ.size() > 0) {
       uint64_t triggerIP = 0;
       triggerIP = PCQ.back();
 
@@ -125,10 +117,11 @@ uint32_t pctp::prefetcher_cache_operate(champsim::address addr, champsim::addres
         pc_meta_table[triggerIP] = block_addr;
 #else
         auto victim = pc_meta_table->insert(triggerIP, block_addr);
-        if (!victim.valid || victim.key != triggerIP)
-          pc_meta_table->set_default(triggerIP);
-        else if (victim.valid && victim.key == triggerIP && victim.data == block_addr)
+
+        if (victim.valid && victim.key == triggerIP && victim.data == block_addr)
           pc_meta_table->touch(triggerIP);
+        else
+          pc_meta_table->set_default(triggerIP);
 #endif
       }
     }
@@ -149,10 +142,6 @@ uint32_t pctp::prefetcher_cache_operate(champsim::address addr, champsim::addres
   }
 #endif
 
-#if ONLY_TRIGGER_ON_MISS
-  if (!cache_hit)
-#endif
-  {
     bool already_in_queue = false;
     for (const auto& p : PCQ) {
       if (p == pc) {
@@ -168,7 +157,7 @@ uint32_t pctp::prefetcher_cache_operate(champsim::address addr, champsim::addres
         PCQ.push_front(pc);
       }
     }
-  }
+  
 
   for (int i = 0; i < pref_addr.size(); i++) {
     const bool success = prefetch_line({pref_addr[i] << LOG2_BLOCK_SIZE}, true, 0);

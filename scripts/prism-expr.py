@@ -23,7 +23,7 @@ WARM_UP = 50_000_000
 INTERVAL = 200_000_000
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--figure", "-f", choices=["Fig10", "Fig11", "Fig12", "Fig13","Fig14", "Fig15", "Fig16", "Fig18", "Fig19"] , help="Assign which figure to generate")
+parser.add_argument("--figure", "-f", choices=["Fig10", "Fig11", "Fig12", "Fig13","Fig14", "Fig15", "Fig16", "Fig17", "Fig18", "Fig19"] , help="Assign which figure to generate")
 parser.add_argument("--phase", "-p", choices=["Compile", "Run", "Draw", "All"],default="All", help="Assign which phase to run, use 'All' to run all phases")
 
 args = parser.parse_args()
@@ -122,6 +122,12 @@ executable_list = {
         "prophet",
         "prism"
     ],
+    "Fig17": [
+        "baseline.8c",
+        "triangel.8c",
+        "prophet.8c",
+        "prism.8c"
+    ],
     "Fig18": [
         "baseline",
         "prism-ol-pctp",
@@ -196,19 +202,19 @@ compile_command = {
     "cache1_2.prophet": f"python3 compiler.py -p prophet -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.prophet",
     "cache1_2.prism": f"python3 compiler.py -p prism -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.prism",
 
-    "pcq-1": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=1 -e pcq-1",
-    "pcq-2": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=2 -e pcq-2",
-    "pcq-4": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=4 -e pcq-4",
-    "pcq-8": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=8 -e pcq-8",
-    "pcq-12": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=12 -e pcq-12",
-    "pcq-16": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INF_PAT INDEPENDENT_PAT PCQ_SIZE=16 -e pcq-16",
+    "pcq-1": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=1 -e pcq-1",
+    "pcq-2": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=2 -e pcq-2",
+    "pcq-4": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=4 -e pcq-4",
+    "pcq-8": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=8 -e pcq-8",
+    "pcq-12": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=12 -e pcq-12",
+    "pcq-16": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=16 -e pcq-16",
 
-    "pat-12k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=12*1024 -e pat-12k",
-    "pat-24k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=24*1024 -e pat-24k",
-    "pat-48k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=48*1024 -e pat-48k",
-    "pat-96k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=96*1024 -e pat-96k",
-    "pat-144k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=144*1024 -e pat-144k",
-    "pat-192k": f"python3 compiler.py -p pctp -f ABLATION_STUDY PC_TRIGGER_PREFETCHING INDEPENDENT_PAT PAT_SIZE=192*1024 -e pat-192k",
+    "pat-12k": f"python3 compiler.py -p pctp -f PAT_SIZE=12*1024 -e pat-12k",
+    "pat-24k": f"python3 compiler.py -p pctp -f PAT_SIZE=24*1024 -e pat-24k",
+    "pat-48k": f"python3 compiler.py -p pctp -f PAT_SIZE=48*1024 -e pat-48k",
+    "pat-96k": f"python3 compiler.py -p pctp -f PAT_SIZE=96*1024 -e pat-96k",
+    "pat-144k": f"python3 compiler.py -p pctp -f PAT_SIZE=144*1024 -e pat-144k",
+    "pat-192k": f"python3 compiler.py -p pctp -f PAT_SIZE=192*1024 -e pat-192k",
 
     "acc_low15_high55": f"python3 compiler.py -p prism -f T_ACC_LOW=0.15 T_ACC_HIGH=0.55 -e acc_low15_high55",
     "acc_low15_high65": f"python3 compiler.py -p prism -f T_ACC_LOW=0.15 T_ACC_HIGH=0.65 -e acc_low15_high65",
@@ -225,7 +231,12 @@ compile_command = {
     "k_2.00_2.00": f"python3 compiler.py -p prism -f K_AGGR=2.00 K_CONS=2.00 -e k_2.00_2.00",
 
     "baseline-inf": f"python3 compiler.py -p inftable -e baseline-inf",
-    "ideal-tp": f"python3 compiler.py -p no -f OPT_PREFETCH -e ideal-tp"
+    "ideal-tp": f"python3 compiler.py -p no -f OPT_PREFETCH -e ideal-tp",
+
+    "baseline.8c": f"python3 compiler.py -p baseline -n 8 -e baseline.8c",
+    "triangel.8c": f"python3 compiler.py -p triangel -n 8 -e triangel.8c",
+    "prophet.8c": f"python3 compiler.py -p prophet -n 8 -e prophet.8c",
+    "prism.8c": f"python3 compiler.py -p prism -n 8 -e prism.8c"
 }
 
 run_trace_list = {
@@ -236,6 +247,7 @@ run_trace_list = {
     "Fig14": ["google"],
     "Fig15": ["ligra", "gap", "spec17", "ml", "google"],
     "Fig16": ["ligra", "gap", "spec17", "ml", "google"],
+    "Fig17": ["ligra", "gap", "spec17", "ml", "google"],
     "Fig18": ["ligra", "gap", "spec17", "ml", "google"],
     "Fig19": ["ligra", "gap", "spec17", "ml", "google"]
 }
@@ -243,7 +255,7 @@ run_trace_list = {
 collect_command = {
     "Fig10": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/Fig10 -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
     "Fig11": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/Fig11 -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
-    "Fig12": [f"python3 energy/energy.py"],
+    "Fig12": [f"python3 utils/energy.py"],
     "Fig13": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/Fig13 -m MT_lookups MT_inserts MT_hits L2C_USEFUL"],
     "Fig14": [f"python3 get_result.py -p pcq-1 pcq-2 pcq-4 pcq-8 pcq-12 pcq-16 -o {RESULT_PATH}/Fig14/pcq -m IPCI PCM_accuracy PCM_laterate",
               f"python3 get_result.py -p pcq-8 pat-12k pat-24k pat-48k pat-96k pat-144k pat-192k -o {RESULT_PATH}/Fig14/pat -m IPCI PCM_useful_prefetches"],
@@ -274,6 +286,7 @@ collect_command = {
                       -a IPCP.baseline   IPCP.triangel   IPCP.prophet   IPCP.prism  \
                          Berti.baseline  Berti.triangel  Berti.prophet  Berti.prism \
                          Stride.baseline Stride.triangel Stride.prophet Stride.prism  -o {RESULT_PATH}/Fig16/l1spatial -m IPCI"],
+    "Fig17": [f"python3 utils/multicore_get_speedup.py"],
     "Fig18": [f"python3 get_result.py -p baseline prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-irp prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-irp \
                       -a prism-none prism-ol-pctp prism-ol-tgp prism-ol-bmp prism-ol-irp prism prism-wo-pctp prism-wo-tgp prism-wo-bmp prism-wo-irp -o {RESULT_PATH}/Fig18 -m IPCI"],
     "Fig19": [f"python3 get_result.py -p prism baseline-inf ideal-tp -o {RESULT_PATH}/Fig19 -m IPCI"]
@@ -300,6 +313,8 @@ if args.phase == "Compile" or args.phase == "All":
         else:
             print(f"Executable {UNDERLINE}{exe}{END}: Found at {CHAMPSIM_PATH}/bin/{exe}")
 
+
+
 if args.phase == "Compile":
     print("Goodbye")
     exit(0)
@@ -323,47 +338,86 @@ def check_results(log_path, list_exe, set_trace):
     failed = []
     # print(set_trace)
     # print(list_exe)
-    for exe in list_exe:
-        exe_name = exe     # 如果 list_exe 是路径，取文件名；如果本来就是名字也没问题
-        exe_dir = log_path / exe_name
+    if args.figure != "Fig17":
+        print(log_path, list_exe,set_trace)
+        for exe in list_exe:
+            exe_name = exe     # 如果 list_exe 是路径，取文件名；如果本来就是名字也没问题
+            exe_dir = log_path / exe_name
 
-        if not exe_dir.exists():
-            # print(f"[Missing Directory] {exe_dir}")
+            if not exe_dir.exists():
+                # print(f"[Missing Directory] {exe_dir}")
+                for trace in set_trace:
+                    failed.append((exe_name, trace, "directory missing"))
+                continue
+
             for trace in set_trace:
-                failed.append((exe_name, trace, "directory missing"))
-            continue
+                trace_name = trace
+                log_file = exe_dir / f"{trace_name}.log"
+                if not log_file.exists():
+                    failed.append((exe_name, trace_name, "log missing"))
+                    continue
 
-        for trace in set_trace:
-            trace_name = trace
-            log_file = exe_dir / f"{trace_name}.log"
-            if not log_file.exists():
-                failed.append((exe_name, trace_name, "log missing"))
+                try:
+                    with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                        completed = any(
+                            "ChampSim completed all CPUs" in line
+                            for line in f
+                        )
+                except Exception as e:
+                    failed.append((exe_name, trace_name, f"read error: {e}"))
+                    continue
+
+                if completed:
+                    success.append((exe_name, trace_name))
+                else:
+                    failed.append((exe_name, trace_name, "not completed"))
+    else:
+        for exe in list_exe:
+            exe_name = exe     # 如果 list_exe 是路径，取文件名；如果本来就是名字也没问题
+            exe_dir = log_path / f"core8" / exe_name
+            if not exe_dir.exists():
+                # print(f"[Missing Directory] {exe_dir}")
+                for trace in set_trace:
+                    failed.append((exe_name, trace, "directory missing"))
                 continue
+            for i in range(0,20):
+                for t in ["ligra", "gap", "spec17", "ml", "google"]:
+                    trace_name = f"{t}-{i}.log"
+                    log_file = exe_dir / trace_name
+                    if not log_file.exists():
+                        failed.append((exe_name, trace_name, "log missing"))
+                        continue
 
-            try:
-                with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-                    completed = any(
-                        "ChampSim completed all CPUs" in line
-                        for line in f
-                    )
-            except Exception as e:
-                failed.append((exe_name, trace_name, f"read error: {e}"))
-                continue
+                    try:
+                        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                            completed = any(
+                                "ChampSim completed all CPUs" in line
+                                for line in f
+                            )
+                    except Exception as e:
+                        failed.append((exe_name, trace_name, f"read error: {e}"))
+                        continue
 
-            if completed:
-                success.append((exe_name, trace_name))
-            else:
-                failed.append((exe_name, trace_name, "not completed"))
+                    if completed:
+                        success.append((exe_name, trace_name))
+                    else:
+                        failed.append((exe_name, trace_name, "not completed"))
+
+
 
     return success, failed
 
 if args.phase == "Run" or args.phase == "All":
     print(f"\n{CYAN}[2] Run Experiments {END}\n")
+    
     success, failed = check_results(LOG_PATH, required_executables, trace_name_set)
 
     if failed:
-        running_command = [f"python3","runner.py","-p"]+required_executables+["-l"]+run_trace_list[args.figure] + ["-s"]
-        print(f"\n● Results not ready, running ChampSim Task with {YELLOW}{' '.join(running_command)}{END}")
+        if args.figure == "Fig17":
+            running_command = [f"python3","runner.py","-p"]+required_executables+["-l"]+run_trace_list[args.figure] + ["-s","-n","8"] 
+        else:
+            running_command = [f"python3","runner.py","-p"]+required_executables+["-l"]+run_trace_list[args.figure] + ["-s"]
+        print(f"\n● Results not ready({len(success)}/{len(failed)+len(success)}), running ChampSim Task with {YELLOW}{' '.join(running_command)}{END}")
         print("-"*20+"LOG"+"-"*20)
         subprocess.run(running_command)
         print("-"*43)

@@ -18,10 +18,10 @@ TRACE_LIST = {}
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--output", "-o", default=RESULT_PATH, help="指定输出文件的目录")
-parser.add_argument("--pflist", "-p", nargs="+", help="指定待提取结果的预取器列表")
-parser.add_argument("--alias", "-a", nargs="+", help="指定输出文件中的预取器别名，顺序需与预取器列表一致")
-parser.add_argument("--measure", "-m", nargs="+", help="指定要提取的指标")
+parser.add_argument("--output", "-o", default=RESULT_PATH, help="Specify the output directory for the results")
+parser.add_argument("--pflist", "-p", nargs="+", help="Specify the list of prefetchers")
+parser.add_argument("--alias", "-a", nargs="+", help="Specify aliases for the prefetchers in the output file, in the same order as the prefetcher list")
+parser.add_argument("--measure", "-m", nargs="+", help="Specify the metrics to extract")
 args = parser.parse_args()
 
 PF_LIST = []

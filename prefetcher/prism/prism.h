@@ -117,10 +117,10 @@ public:
   void insert(uint64_t key, const MetaTableEntry& data)
   {
     Entry entry = Super::insert(key, data);
-    if (entry.valid && entry.key != key) {
-      Super::set_default(key);
-    } else {
+    if (entry.valid && entry.key == key) {
       Super::touch(key);
+    } else {
+      Super::set_default(key);
     }
   }
 
@@ -313,11 +313,7 @@ public:
   std::set<uint64_t> main_table_prefetches;
 
   // For PC_TRIGGER_PREFETCHING
-#ifndef INDEPENDENT_PAT
   bool enable_PC_Trigger_prefetching = false;
-#else
-  bool enable_PC_Trigger_prefetching = true;
-#endif
   int init_ways_for_pc_metadata_table;
   uint64_t fail_entry_init = 0;
   uint64_t inserted_PC = 0;
@@ -338,7 +334,6 @@ public:
 
   void update_pc_metatable_size()
   {
-#ifndef INDEPENDENT_PAT
     if (fail_entry_init >= 0.3 * RESIZE_SAMPLE_WINDOW) {
       enable_PC_Trigger_prefetching = true;
       waysForPAT = 2;
@@ -364,7 +359,6 @@ public:
     origin_waysForPAT = waysForPAT;
     inserted_PC = 0;
     fail_entry_init = 0;
-#endif
   }
 
   // for main metadata resize

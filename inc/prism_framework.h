@@ -289,13 +289,15 @@ public:
         shct(SHCT_SIZE)
   {
   }
+
+  /* 
+    TODO: This is a default configuration of SHiP. 
+    It seems to have marginal effects on the performance. 
+    How to set for Markov Table?
+  */
   static const int SHCT_SIZE = 16384;
   static const int SHCT_PRIME = 16381;
   static const int LOG2_SAMPLER_SET = 8;
-
-  // static const int SHCT_SIZE = 4096; // 4096*3/8=1536
-  // static const int SHCT_PRIME = 4093;
-  // static const int LOG2_SAMPLER_SET = 6;
 
   static const int SHCT_MAX = 7;
 

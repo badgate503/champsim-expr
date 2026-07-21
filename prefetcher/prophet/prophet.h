@@ -9,6 +9,7 @@
 #include <random>
 #include <set>
 #include <string>
+#include <sys/stat.h>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -313,6 +314,9 @@ public:
 
       hint_file_name = trace_dir + "/hint/" + getTraceName(trace_path) + ".txt";
       cout << "hint file: " << hint_file_name << endl;
+
+      std::string hint_dir = trace_dir + "/hint/";
+      mkdir(hint_dir.c_str(), 0755);
       hint_file.open(hint_file_name);
       if (!hint_file) {
         std::cerr << "Unable to open: " << hint_file_name << endl;

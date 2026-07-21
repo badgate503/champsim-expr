@@ -1,6 +1,11 @@
 #ifndef PCTP
 #define PCTP
 
+/*
+  This prefetcher is: baseline + PC Triggered Prefetching (PCTP). 
+  We use this prefetcher to evaluate the sensitivity of PCTP parameters.
+*/
+
 #include <cassert>
 #include <cstdint>
 #include <fstream>
@@ -25,8 +30,6 @@
 #define PAT_SIZE (4 * 1024 * 1 * 12)
 #endif
 #define PAT_ASSOC 12
-
-#define ONLY_TRIGGER_ON_MISS false
 
 #define PC_TABLE_SIZE 512
 #define PC_TABLE_ASSOC 16

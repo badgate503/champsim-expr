@@ -208,7 +208,8 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
           if (discard_metadata == 8)
             discard_metadata = 0;
         }
-      } else {
+      }
+      if (trigger_addr == block_addr) {
         train_pc_meta_table = true;
       }
 
@@ -234,7 +235,7 @@ uint32_t prism::prefetcher_cache_operate(champsim::address addr, champsim::addre
   // train PC Meta Table
   if (enable_PC_Trigger_prefetching && train_pc_meta_table) {
     if (PCQ.size() > 0) {
-      uint64_t triggerIP = *PCQ.rbegin();
+      uint64_t triggerIP = PCQ.back();
       if (triggerIP) {
         uint64_t pc_meta_table_key = hash_xor(triggerIP);
 #ifdef INF_PAT

@@ -34,6 +34,7 @@ parser.add_argument("--tracelist", "-l", nargs="*", type=str, help="Name(s) of t
 parser.add_argument("--output", "-o", help="Directory to redirect experiment results to")
 parser.add_argument("--skip", "-s", action="store_true", help="Skip re-running those whose output files already exist; otherwise, overwrite previous results")
 parser.add_argument("--nproc", "-j", type=int, default=None, help="Number of parallel jobs to use (default: use all available cores)")
+parser.add_argument("--ncore","-n", type=int, default=1, help="Number of cores to use for multicore experiments (default: 8)")
 
 args = parser.parse_args()
 
@@ -54,8 +55,7 @@ trace_name_set = set()
 
 if args.traces is not None:
     trace_name_set.update(args.traces)
-
-# 支持 -l 多参数，每个参数为 tracelist 文件的一行前缀
+multicore_trace_map = dict()
 if args.tracelist is not None and len(args.tracelist) > 0:
     with open("./utils/tracelist", "r") as f:
         lines = f.readlines()
@@ -67,26 +67,54 @@ if args.tracelist is not None and len(args.tracelist) > 0:
                # print(f"Include {len(traces)} traces from {CYAN}{prefix}{END}: {RED}{' '.join(traces)}{END}\n")
 
 os.makedirs(LOG_PATH, exist_ok=True)
-log_path = LOG_PATH
-if args.output is not None:
-    log_path = os.path.abspath(args.output)
-task_set = {(p,t,log_path) for p in args.prefetcher for t in trace_name_set}
-#print(f"Prefetchers: {YELLOW}{' '.join(args.prefetcher)}{END}")
-for pp in args.prefetcher:
-    if pp.endswith(".mc"):
-        pp_basename = pp[:-3]
-    else:
+if args.ncore == 1:
+    log_path = LOG_PATH
+    if args.output is not None:
+        log_path = os.path.abspath(args.output)
+    task_set = {(p,t,log_path) for p in args.prefetcher for t in trace_name_set}
+    #print(f"Prefetchers: {YELLOW}{' '.join(args.prefetcher)}{END}")
+    for pp in args.prefetcher:
         pp_basename = pp    
-    if os.path.isdir(log_path / f"{pp_basename}"):
-        for fname in os.listdir(log_path / f"{pp_basename}"):
-            if fname.endswith(".log"):
-                trace_name = fname[:-4]  # remove .log
-                if trace_name in trace_name_set:
-                    
-                    with open(log_path / f"{pp_basename}" / f"{fname}", "r") as f:
-                        if "ChampSim completed all CPUs" in f.read():
-                            if args.skip:
-                                task_set.remove((pp, trace_name, log_path))
+        if os.path.isdir(log_path / f"{pp_basename}"):
+            for fname in os.listdir(log_path / f"{pp_basename}"):
+                if fname.endswith(".log"):
+                    trace_name = fname[:-4]  # remove .log
+                    if trace_name in trace_name_set:
+                        with open(log_path / f"{pp_basename}" / f"{fname}", "r") as f:
+                            if "ChampSim completed all CPUs" in f.read():
+                                if args.skip:
+                                    task_set.remove((pp, trace_name, log_path))
+else:
+    print(f"ncore = {args.ncore}")
+    trace_mix_set = set()
+    with open(f"./utils/sample_{args.ncore}core.csv", "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            parts = line.strip().split(",")
+            trace_mix_set.add(parts[0])
+            multicore_trace_map[parts[0]] = parts[1:]
+    print(f"Included multi-core trace sets from sample_{args.ncore}core.csv: {YELLOW}{' '.join(trace_mix_set)}{END}")
+    log_path = LOG_PATH
+    if args.output is not None:
+        log_path = os.path.abspath(args.output)
+    task_set = {(p,t,log_path) for p in args.prefetcher for t in trace_mix_set}
+
+    for pp in args.prefetcher:
+        pp_basename = pp    
+        if os.path.isdir(log_path / f"core{args.ncore}" / pp_basename):
+            for fname in os.listdir(log_path / f"core{args.ncore}" / pp_basename):
+                if fname.endswith(".log"):
+                    trace_name = fname[:-4]  # remove .log
+                    if trace_name in trace_mix_set:
+                        
+                        with open(log_path / f"core{args.ncore}" / pp_basename / fname, "r") as f:
+                            if "ChampSim completed all CPUs" in f.read():
+                                if args.skip:
+                                    task_set.remove((pp, trace_name, log_path))
+                                    print(f"Exclude {YELLOW}{pp}{END}@{RED}{trace_name}{END}")
+                            else:
+                                print(f"Overwrite {YELLOW}{pp}{END}@{RED}{trace_name}{END}")
+
 
 task_map = {}
 
@@ -111,12 +139,18 @@ print(f"\nNumber of Champsim tasks: {len(task_set)}. Number of processes: {nproc
 
 def launch_task(task):
     p, w, log = task
-    w = [w]
-    mode_is_mc = p.endswith(".mc")
+    if args.ncore == 1:
+        w = [w]
+    else:
+        w = multicore_trace_map[w]
+    
     trace_all = [trace_path_map[v] for v in w]
     work = [f"{CHAMPSIM_PATH}/bin/{p}", "--warmup-instructions", f"{WARM_UP}", "--simulation-instructions", f"{INTERVAL}"] + trace_all
     name = f"{w[0]}.log"
-    out_path = f"{log}/{p}"
+    if args.ncore == 1:
+        out_path = f"{log}/{p}"
+    else:
+        out_path = f"{log}/core{args.ncore}/{p}"
     os.makedirs(f"{out_path}/", exist_ok=True)
     with open(f"{out_path}/{name}", "w") as f:
         f.write(" ".join(work))
@@ -145,18 +179,12 @@ def launch_task(task):
     if len(w) == 1:
         return f"{YELLOW}{p}{END}@{RED}{w[0]}{END}"
     else:
-        return f"{YELLOW}{p}{END}@{RED}{len(w)}core-{alias}{END}"
+        return f"{YELLOW}{p}{END}@{RED}{len(w)}{args.ncore}core-{' '.join(w)}{END}"
 
 if __name__ == '__main__':
-    
-    # 2. 创建进程池
-    # total 参数告诉 tqdm 总共有多少个任务，以便正确计算百分比
+
     with Pool(processes=nproc) as pool:
         results = []
-        
-        # 使用 pool.imap 结合 tqdm 动态显示进度
-        # 如果对结果顺序没有要求，用 imap_unordered 性能会更好一点
-        # 使用 tqdm 包裹 imap_unordered，这样哪个进程先算完就先弹出来
         pbar = tqdm(
             pool.imap_unordered(launch_task, task_set), 
             total=len(task_set), 
@@ -165,9 +193,6 @@ if __name__ == '__main__':
         
         results = []
         for message in pbar:
-            # 【核心】：使用 pbar.write() 代替 print()
-            # 它会自动把光标移到进度条上方输出日志，并将进度条牢牢固定在最底下
             pbar.write("Finished: "+message)
-            
-            
+
     print(f"{len(task_set)} Champsim task completed.")
