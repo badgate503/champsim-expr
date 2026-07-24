@@ -16,7 +16,7 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
     return metadata_in;        // Ignore if no IP info
   }
 
-  /* 1. 访问 Training Unit */
+
   TrainingUnitEntry* TU_entry = TU->get(pc);
   /* Energy */
   TU->read_n++;
@@ -57,9 +57,9 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
     if (RandomChance(8, 8) && !high_conf) {
       should_sample = true;
     }
-    /* 若当前 globalReuseConf, globalPatternConf 和 globalHighPatternConf 都大于默认值（64），则将 (CurPC, Addr) 作为表项插入 Training Unit*/
+    /* If current globalReuseConf, globalPatternConf and globalHighPatternConf > 64, Insert (CurPC, Addr) into Training Unit*/
     if (should_sample || high_conf) {
-      auto TU_new = TrainingUnitEntry(pc, line_addr, global_timestamp); /* 分配一个新的 TU Entry (PC, Addr) */
+      auto TU_new = TrainingUnitEntry(pc, line_addr, global_timestamp); /* New TU Entry (PC, Addr) */
       if (global_pattern_conf1 > 96)
         TU_new.currently_twodist_pf = true;
       TU->set(pc, TU_new);
@@ -70,7 +70,7 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
 
   /* Step2. Access Second Chance Sampler (SCS) if we found correlated addr in Step1 */
   if (found_correlated_addr) {
-    SecondChanceSamplerEntry* SC_entry = SC->find(line_addr); /* 在 Second Chance Sampler 中查找当前地址对应的 Entry */
+    SecondChanceSamplerEntry* SC_entry = SC->find(line_addr); /* Search the entry in Second Chance Sampler */
     /* Energy */
     SC->read_n++;
     /* If found SCS Entry and it is never used */
@@ -109,8 +109,7 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
     if (HS_entry && HS_entry->tu_entry_key == TU_entry->key) {
       /* Energy */
       HS->write_n++;
-      /* 若 T.timestamp 和 A.timestamp 相差小于一个时间窗口，则认为 CurPC 处指令访存重复特征显著，增大 T.reuseConf 和全局 reuseConf ，反之，减少局部和全局的
-       * reuseConf */
+          /* If T.timestamp - A.timestamp is lower than a threshold, increase T.reuseConf and global reuseConf */
       int64_t time_distance = TU_entry->local_timestamp - HS_entry->timestamp;
       if (time_distance > 0 && time_distance < 196608 * 2) { // magic nonsense number
         TU_entry->reuse_conf.increment();
@@ -121,9 +120,7 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
       }
       HS_entry->reused = true;
 
-      /* 如果 A.Target == Addr ，则说明 PC 处地址流出现地址对 (PrevAddr, Addr)
-         的重复，认为 CurPC 处指令访存模式特征显著，增大局部和全局的 highPatternConf 以
-         及 basePatternConf */
+      /* If A.Target == Addr, increase local and global highPatternConf, basePatternConf */
       bool will_be_confident = (line_addr == HS_entry->target_addr);
 
       if (will_be_confident) {
@@ -132,15 +129,17 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
         global_pattern_conf0.increment();
         global_pattern_conf1.increment();
       }
-      // TODO: L2 cache has HS_entry->target_addr and it was not prefetched
       else if(cache_pf_map.find(HS_entry->target_addr) != cache_pf_map.end() && !cache_pf_map[HS_entry->target_addr]) {
-        /* 若 A.Target != Addr 且 Second Chance Sampler 中没有 A.Target ，则将 A.Target 插入 Second Chance Sampler 以等待 Second Chance Pattern */
+        /* If A.Target != Addr and A.Target is not in Second Chance Sampler, insert A.Target into Second Chance Sampler to wait for Second Chance Pattern */
         SecondChanceSamplerEntry* SC_entry = SC->get_victim(HS_entry->target_addr);
         /* Energy */
         SC->read_n++;
         if (SC_entry && !SC_entry->used) {
-          /* 如果被驱逐时还未被使用过，则说明过了很久还没有出现希望看到的 Second Chance Pattern，此时认为 V.Train-Idx 处指令访存模式特征不显著，不对
-             称的降低全局的和局部的 PatternConf 计数器
+          /* 
+             If the entry is evicted before ever being used, it means the expected
+             second-chance pattern has not appeared for a long time. In this case,
+             treat the memory-access pattern at V.Train-Idx as weak and decrease
+             both global and local PatternConf counters asymmetrically.
           */
           TrainingUnitEntry* TU_entry = TU->find(SC_entry->train_pc);
           /* Energy */
@@ -167,7 +166,8 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
       HS_entry->confident = will_be_confident;
     } 
     else if (should_sample || RandomChance(TU_entry->reuse_conf.value, TU_entry->sample_rate.value)) {
-      /* 若未找到有效采样或采样来自另一个 PC 的地址流，则以随机概率 采样 CurPC 的地址对 (PrevAddr, Addr) */
+      /* If no valid sample is found, or the sample belongs to another PC's address stream,
+         sample CurPC's address pair (PrevAddr, Addr) with a random probability. */
       auto HS_entry = HS->get_victim(TU_entry->last_addr0);
       /* Energy */
       HS->read_n++;
@@ -178,12 +178,15 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
         if (TU_entry_from_hs) {
 
           uint64_t distance = TU_entry_from_hs->local_timestamp - HS_entry->timestamp; // ! UAF
-          /* 若 V 的时间戳和 V 采样的 PC 对应的 Training Unit 表项的时间戳相差大于一个时间窗口，则说
-             明采样过于陈旧，因此增大 CurPC 的采样率： */
+           /* If the timestamp gap between V and the Training Unit entry for V's sampled PC
+             exceeds a time window, the sample is considered too stale, so increase
+             CurPC's sampling rate. */
           if (distance > 196608 * 2) {
             TU->touch(TU_entry_from_hs->key);
-            /* 若在此基础上 !V.Accessed ， 说明采样 V 过于陈旧且长时间没被使用；意味着
-               V.Train-Idx 的地址流长时间不会出现采样 V 记录的地址，因此降低 V.Train-Idx 的 reuseConf */
+            /* If additionally !V.Accessed, sample V is stale and has remained unused
+              for a long time. That implies the address stream at V.Train-Idx is
+              unlikely to revisit V's recorded address soon, so decrease
+              V.Train-Idx's reuseConf. */
             if (!HS_entry->reused) {
 
               TU_entry_from_hs->reuse_conf.decrement();
@@ -193,12 +196,14 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
             }
             TU_entry->sample_rate.increment();
           } else if (distance > 0 && !HS_entry->reused) {
-            /* 若时间戳相差小于一个时间窗口，且 !V.Accessed ，说明采样后还没来得及发现地址流中的重复地
-               址就被重新采样，因此需要降低 CurPC 的采样率。避免过于频繁的替换。*/
+            /* If the timestamp gap is within a time window and !V.Accessed, the entry
+               was resampled before repeated addresses in the stream could be observed.
+               Therefore, decrease CurPC's sampling rate to avoid overly frequent
+               replacement. */
             TU_entry->sample_rate.decrement();
           }
         } else {
-          // HS_entry 本来就是 victim,刚好被替换掉。
+          // HS_entry is already the victim and is being replaced now.
         }
 
       } else {
@@ -220,11 +225,12 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
 
   /* Step5. Update LLC partition */
   if (global_timestamp > 50000000) {
-    /* 找到 Hits 计数器里最大的 Hits[m] */
+    /* Find the maximum value Hits[m] among all Hits counters. */
     int target_size = SD->Duel();
     uint64_t target_score = SD->dueller_counters[target_size];
     uint64_t current_score = SD->dueller_counters[current_partition];
-    /* 若当前分区大小 cur_size 对应的 Hits[cur_size] 小于 Hits[m] 的 4/5，则调整分区，且目标分区大小为 m （Cache Line 数） */
+    /* If Hits[cur_size] is less than 4/5 of Hits[m], repartition and set the
+       target partition size to m (number of cache lines). */
     if (target_size != (current_partition) && target_score > current_score * 1.25) {
       current_partition = target_size;
       MD->repartition(current_partition);
@@ -246,7 +252,6 @@ uint32_t triangel::prefetcher_cache_operate(champsim::address addr, champsim::ad
     bool find = false;
     MT_lookup_reqs++;
     
-    /* 使用 Addr 索引 Markov 分区得到预取目标地址 TargetAddr0 */
     auto MD_entry = GetMetadata(target, true);
     MT_lookups++;
     if (MD_entry) {
