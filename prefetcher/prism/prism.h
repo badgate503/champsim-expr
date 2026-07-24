@@ -313,18 +313,24 @@ public:
   std::set<uint64_t> main_table_prefetches;
 
   // For PC_TRIGGER_PREFETCHING
+#ifndef INDEPENDENT_PAT
   bool enable_PC_Trigger_prefetching = false;
+#else
+  bool enable_PC_Trigger_prefetching = true;
+#endif
   int init_ways_for_pc_metadata_table;
   uint64_t fail_entry_init = 0;
   uint64_t inserted_PC = 0;
   uint64_t init_insert_PC = 0;
   uint64_t init_fail_entry_init = 0;
   std::deque<uint64_t> PCQ;
+
 #ifdef INF_PAT
   unordered_map<uint64_t, MetaTableEntry> pcMetaTable;
 #else
   prismPCAddressTable* pcMetaTable = new prismPCAddressTable(PAT_SIZE, PAT_ASSOC);
 #endif
+
   // stat for pc metadata table
   uint64_t PCM_late_prefetches = 0;
   uint64_t PCM_useful_prefetches = 0;
@@ -334,6 +340,7 @@ public:
 
   void update_pc_metatable_size()
   {
+#ifndef INDEPENDENT_PAT
     if (fail_entry_init >= 0.3 * RESIZE_SAMPLE_WINDOW) {
       enable_PC_Trigger_prefetching = true;
       waysForPAT = 2;
@@ -359,6 +366,7 @@ public:
     origin_waysForPAT = waysForPAT;
     inserted_PC = 0;
     fail_entry_init = 0;
+#endif
   }
 
   // for main metadata resize

@@ -1,10 +1,10 @@
-#ifndef PCTP
-#define PCTP
-
 /*
-  This prefetcher is: baseline + PC Triggered Prefetching (PCTP). 
+  This prefetcher is: baseline + PC Triggered Prefetching (PCTP).
   We use this prefetcher to evaluate the sensitivity of PCTP parameters.
 */
+
+#ifndef PCTP
+#define PCTP
 
 #include <cassert>
 #include <cstdint>
@@ -36,7 +36,7 @@
 
 #define WAY_MARKOV 4
 #define META_TABLE_ASSOC 12
-#define META_TABLE_SIZE (4096 * 12 * WAY_MARKOV)
+#define META_TABLE_SIZE (N_LLC_SET * 12 * WAY_MARKOV)
 #define GLOBAL_DEGREE 1 
 
 class pctp;

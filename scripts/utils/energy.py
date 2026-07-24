@@ -329,7 +329,7 @@ for scheme_name, scheme_result in energy_result.items():
 
 os.makedirs(RESULT_PATH / "Fig12", exist_ok=True)
 
-csv_path = RESULT_PATH / "Fig12" / "energy_result.csv"
+csv_path = RESULT_PATH / "Fig12" / "energy.csv"
 with csv_path.open("w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=["group_name", "set", "trace", "trace_energy"])
     writer.writeheader()

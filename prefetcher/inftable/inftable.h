@@ -26,13 +26,11 @@
 #define PC_TABLE_SIZE 512
 #define PC_TABLE_ASSOC 16
 #define WAY_MARKOV 4
-#define META_TABLE_SIZE (4096 * 12 * WAY_MARKOV)
+#define META_TABLE_SIZE (N_LLC_SET * 12 * WAY_MARKOV)
 #define META_TABLE_ASSOC 12
 #define GLOBAL_DEGREE 1 
 
-#ifndef INFT_LLC_WAY
-#define INFT_LLC_WAY 8
-#endif
+#define INFT_LLC_WAY 16
 
 class inftable;
 
@@ -87,14 +85,11 @@ public:
   uint32_t numEntriesinTable = 0;
 
   // stat
-  uint64_t meta_table_lookups = 0;
-  uint64_t meta_table_hits = 0;
   uint64_t meta_table_issued_prefetches = 0;
   uint64_t meta_table_accurate_prefetches = 0;
   std::set<uint64_t> meta_table_prefetches;
 
   //inftableMetaTable* metaTable = new inftableMetaTable(META_TABLE_SIZE, META_TABLE_ASSOC);
-
   std::unordered_map<uint64_t, inftableMetaTableEntry> metaTable;
 
   std::map<uint64_t, std::deque<uint64_t>> pcTable;
@@ -103,6 +98,35 @@ public:
   std::string hint_file;
   std::ofstream logfile;
   bool warmup_complete = false;
+
+  // stat MT lookups
+  uint64_t MT_lookups = 0;
+  uint64_t MT_hits = 0;
+  uint64_t MT_inserts = 0;
+  // uint64_t MT_lookup_reqs = 0;
+  // uint64_t MT_lookup_returns = 0;
+  bool warmup_reset = false;
+
+  uint64_t training_unit_read = 0;
+  uint64_t training_unit_write = 0;
+  uint64_t markov_read = 0;
+  uint64_t markov_write = 0;
+
+  void reset_stat_counters()
+  {
+    MT_lookups = 0;
+    MT_hits = 0;
+    MT_inserts = 0;
+
+    training_unit_read = 0;
+    training_unit_write = 0;
+    markov_read = 0;
+    markov_write = 0;
+
+    meta_table_issued_prefetches = 0;
+    meta_table_accurate_prefetches = 0;
+    warmup_reset = true;
+  }
 
   std::string getTraceName(const std::string& full_path)
   {

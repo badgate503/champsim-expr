@@ -6,7 +6,12 @@ Keeps only Average rows and splits the Prefetcher column into two parts.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple
+import csv
+from typing import Dict, List, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.lines import Line2D
 
 import pandas as pd
 import sys
@@ -45,17 +50,6 @@ for file_name in FILES:
 
 
 """Plot cache, DRAM, and L1 sensitivity trends on a single canvas."""
-
-from __future__ import annotations
-
-import csv
-from pathlib import Path
-from typing import Dict, List, Tuple
-
-import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.lines import Line2D
-
 
 FIG_SIZE = (8, 2)
 FONT_FAMILY = "Times New Roman"
@@ -179,7 +173,7 @@ def plot_cache(ax: plt.Axes, cache_data: Dict[str, Dict[str, float]]) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels([format_cache_label(cfg) for cfg in configs], rotation=0)
     ax.set_ylabel("Speedup")
-    ax.set_ylim(0.95, 1.11)
+    ax.set_ylim(0.95, 1.10)
     ax.set_yticks([0.95, 1.00, 1.05,1.10])
     ax.set_yticklabels([f"0.95", "1.00", "1.05", "1.10"])
     # ax.set_ylim(compute_ylim(all_values))

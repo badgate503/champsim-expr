@@ -3,10 +3,9 @@ import os
 from pathlib import Path
 
 SCRIPTS_PATH = Path(__file__).resolve().parent.parent
-LYQ_PATH = SCRIPTS_PATH.parent.parent
 
 CHAMPSIM_PATH = SCRIPTS_PATH.parent
-TRACE_PATH = LYQ_PATH / "trace"
+TRACE_PATH = CHAMPSIM_PATH / "trace"
 
 EXPR_PATH = CHAMPSIM_PATH / "experiments"
 LOG_PATH = EXPR_PATH / "champsim_log"

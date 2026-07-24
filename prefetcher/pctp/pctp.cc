@@ -107,7 +107,7 @@ uint32_t pctp::prefetcher_cache_operate(champsim::address addr, champsim::addres
   // PC triggered prefetches
   if (last_addr == 0 || last_addr == block_addr) 
   {
-    if (PCQ.size() > 0) {
+    if (!cache_hit && PCQ.size() > 0) {
       uint64_t triggerIP = 0;
       triggerIP = PCQ.back();
 

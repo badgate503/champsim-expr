@@ -39,7 +39,7 @@ def load_data() -> pd.DataFrame:
 	df.columns = df.columns.str.strip()
 	df["Set"] = df["Set"].astype(str).str.strip()
 	df["Prefetcher"] = df["Prefetcher"].astype(str).str.strip()
-	numeric_cols = ["MT_lookups", "MT_inserts", "MT_hits", "L2C_USEFUL"]
+	numeric_cols = ["MT_lookups", "MT_inserts", "MT_hits", "MT_usefuls"]
 	for col in numeric_cols:
 		df[col] = pd.to_numeric(df[col], errors="coerce")
 	return df
@@ -203,9 +203,9 @@ def plot_right(ax: plt.Axes, df: pd.DataFrame, sets: list[str]) -> None:
 				continue
 			mt_lookups = float(row["MT_lookups"].iloc[0])
 			mt_hits = float(row["MT_hits"].iloc[0])
-			l2c_useful = float(row["L2C_USEFUL"].iloc[0])
-			useful_vals.append(l2c_useful)
-			hit_gap_vals.append(max(mt_hits - l2c_useful, 0.0))
+			mt_useful = float(row["MT_usefuls"].iloc[0])
+			useful_vals.append(mt_useful)
+			hit_gap_vals.append(max(mt_hits - mt_useful, 0.0))
 			miss_gap_vals.append(max(mt_lookups - mt_hits, 0.0))
 
 		bottom = np.array(useful_vals, dtype=float)

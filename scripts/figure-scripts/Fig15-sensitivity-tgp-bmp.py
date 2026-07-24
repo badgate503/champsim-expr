@@ -1,195 +1,291 @@
-#!/usr/bin/env python3
-from __future__ import annotations
-
 from pathlib import Path
 
-import matplotlib as mpl
-
-mpl.use("Agg")
-
-import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-from pathlib import Path
+from typing import Optional
 import sys
-
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from utils.defs import *
 
-ACC_CSV_PATH = RESULT_PATH / "Fig15" / "sens_acc" / "average.csv"
-K_CSV_PATH = RESULT_PATH / "Fig15" / "sens_k" / "average.csv"
-OUTPUT_PATH = FIGURE_PATH / "Fig15-sensitivity-tgp-bmp.pdf"
-FONT_SIZE_PT = 9
-FIG_SIZE = (3.5, 0.9)
+TARGET_PREFETCHERS = [
+	"acc_low15_high55",
+	"acc_low15_high65",
+	"acc_low15_high75",
+	"acc_low15_high85",
+	"acc_low15_high95",
+]
 
-ACC_HIGH_VALUES = [55.0, 65.0, 75.0, 85.0, 95.0]
-ACC_LOW_VALUES = [5.0, 10.0, 15.0, 20.0, 25.0]
-K_VALUES = [1.00, 1.25, 1.50, 1.75, 2.00]
-
-
-def _parse_acc_prefetcher(name: str) -> tuple[float, float]:
-	parts = str(name).split("_")
-	if len(parts) != 3 or not parts[0].startswith("acc"):
-		raise ValueError(f"Unexpected Prefetcher value: {name}")
-	low = parts[1]
-	high = parts[2]
-	if not low.startswith("low") or not high.startswith("high"):
-		raise ValueError(f"Unexpected Prefetcher value: {name}")
-	return float(low.replace("low", "")), float(high.replace("high", ""))
+K_PREFETCHERS = [
+	"k_1.00",
+	"k_1.25",
+	"k_1.50",
+	"k_1.75",
+	"k_2.00",
+]
 
 
-def _parse_k_prefetcher(name: str) -> float:
-	parts = str(name).split("_")
-	if len(parts) < 2 or parts[0] != "k":
-		raise ValueError(f"Unexpected Prefetcher value: {name}")
-	return float(parts[1])
+def load_data(data_dir: Path, target_prefetchers: list[str]) -> pd.DataFrame:
+	csv_files = [
+		data_dir / "gap.csv",
+		data_dir / "google.csv",
+		data_dir / "ligra.csv",
+		data_dir / "ml.csv",
+		data_dir / "spec17.csv",
+	]
+	frames = [pd.read_csv(csv_file) for csv_file in csv_files]
+	data = pd.concat(frames, ignore_index=True)
+	data = data[data["Prefetcher"].isin(target_prefetchers)].copy()
+	return data
 
 
-def _load_dataframe(csv_path: Path) -> pd.DataFrame:
-	df = pd.read_csv(csv_path)
-	if "Prefetcher" not in df.columns or "IPCI" not in df.columns:
-		raise ValueError(f"{csv_path.name} must contain Prefetcher and IPCI columns")
-	return df.copy()
+def load_trace_aliases(mapping_path: Path) -> dict[str, str]:
+	mapping = pd.read_csv(mapping_path)
+	return dict(zip(mapping["trace_name"], mapping["alias"]))
 
 
-def load_acc_average(csv_path: Path) -> pd.DataFrame:
-	df = _load_dataframe(csv_path)
-	if "Set" in df.columns:
-		df = df[df["Set"] == "Average"].copy()
-	parsed = df["Prefetcher"].apply(_parse_acc_prefetcher)
-	df["low"] = parsed.apply(lambda item: item[0])
-	df["high"] = parsed.apply(lambda item: item[1])
-	return df
-
-
-def load_k_average(csv_path: Path) -> pd.DataFrame:
-	df = _load_dataframe(csv_path)
-	if "Set" in df.columns:
-		df = df[df["Set"] == "Average"].copy()
-	df["k"] = df["Prefetcher"].apply(_parse_k_prefetcher)
-	return df.groupby("k", as_index=False)["IPCI"].mean()
-
-
-def extract_series(df: pd.DataFrame, field: str, values: list[float], filters: dict[str, float]) -> list[float]:
-	subset = df
-	for column, expected in filters.items():
-		subset = subset[subset[column] == expected]
-	indexed = subset.set_index(field)["IPCI"]
-	missing = [value for value in values if value not in indexed.index]
-	if missing:
-		raise ValueError(f"Missing values for {field}: {missing}")
-	return [float(indexed.loc[value]) for value in values]
-
-
-def style_axis(ax: plt.Axes) -> None:
-	ax.tick_params(axis="both", labelsize=FONT_SIZE_PT, width=0.8, length=2.5)
-	for spine in ax.spines.values():
-		spine.set_linewidth(0.8)
-
-
-def plot_line(ax: plt.Axes, x_values: list[float], y_values: list[float], *, color: str, marker: str) -> None:
-	ax.plot(
-		x_values,
-		y_values,
-		color=color,
-		linewidth=1.5,
-		marker=marker,
-		markersize=3,
-		markerfacecolor=color,
-		markeredgecolor="black",
-		markeredgewidth=0.2,
-        
-		zorder=5,
-		clip_on=False,
+def build_diff_table(data: pd.DataFrame) -> pd.DataFrame:
+	pivot = data.pivot_table(
+		index="Trace", columns="Prefetcher", values="IPCI", aggfunc="first"
 	)
+	pivot = pivot.dropna(subset=TARGET_PREFETCHERS)
+
+	ipci_span = pivot[TARGET_PREFETCHERS].max(axis=1) - pivot[TARGET_PREFETCHERS].min(axis=1)
+	selected = pivot[ipci_span > 0.05].copy()
+	if selected.empty:
+		return selected
+
+	selected["d55_75"] = selected["acc_low15_high55"] - selected["acc_low15_high75"]
+	selected["d65_75"] = selected["acc_low15_high65"] - selected["acc_low15_high75"]
+	selected["d85_75"] = selected["acc_low15_high85"] - selected["acc_low15_high75"]
+	selected["d95_75"] = selected["acc_low15_high95"] - selected["acc_low15_high75"]
+
+	return selected.sort_index()
+
+
+def build_k_diff_table(data: pd.DataFrame) -> pd.DataFrame:
+	pivot = data.pivot_table(
+		index="Trace", columns="Prefetcher", values="IPCI", aggfunc="first"
+	)
+	pivot = pivot.dropna(subset=K_PREFETCHERS)
+
+	ipci_span = pivot[K_PREFETCHERS].max(axis=1) - pivot[K_PREFETCHERS].min(axis=1)
+	selected = pivot[ipci_span > 0.05].copy()
+	if selected.empty:
+		return selected
+
+	selected["d100_150"] = selected["k_1.00"] - selected["k_1.50"]
+	selected["d125_150"] = selected["k_1.25"] - selected["k_1.50"]
+	selected["d175_150"] = selected["k_1.75"] - selected["k_1.50"]
+	selected["d200_150"] = selected["k_2.00"] - selected["k_1.50"]
+
+	return selected.sort_index()
+
+
+def plot_grouped_bars(
+	ax: plt.Axes,
+	diff_table: pd.DataFrame,
+	series: list[tuple[str, str]],
+	title: str,
+	trace_aliases: dict[str, str],
+	rotation: int = 25,
+	titlepad: int = 13,
+	colors: list[str] = ["#AA3377", "#D25A70", "#DF7B73", "#EDA87E"],
+) -> None:
+	plt.rcParams["font.family"] = "Times New Roman"
+	plt.rcParams["font.size"] = 9
+
+	traces = diff_table.index.tolist()
+	x = np.arange(len(traces))
+	bar_width = 0.2
+	hatches = ["/////", "|||||", "-----", "\\\\\\\\\\"]
+
+	for idx, (col, label) in enumerate(series):
+		ax.bar(
+			x + (idx - 1.5) * bar_width,
+			diff_table[col].values,
+			width=bar_width,
+			label=label,
+			color=colors[idx],
+			edgecolor='#000000',
+                        linewidth=0.2,
+						hatch=hatches[idx % len(hatches)],
+						
+		)
+
+	ax.axhline(0.0, color="black", linewidth=0.8)
+	ax.set_ylabel(r"$\Delta$Speedup")
+	#ax.set_title(title, pad=titlepad)
+	ax.set_xticks(x)
+	ax.set_xticklabels(
+		[trace_aliases.get(trace, trace) for trace in traces],
+		rotation=rotation,
+		ha="center",
+		fontsize=7,
+	)
+	ax.legend(
+		frameon=False,
+		ncol=len(series),
+		fontsize=7,
+		loc="upper center",
+		bbox_to_anchor=(0.5, 1.08),
+		columnspacing=0.8,
+		handletextpad=0.3,
+		borderaxespad=-1.0,
+	)
+	ax.margins(x=0.01)
+
+
+def set_top_y_axis(ax: plt.Axes) -> None:
+	ax.set_ylim(-0.1, 0.1)
+	ax.set_yticks([0.10, 0.05, 0.0, -0.05, -0.10])
+	ax.set_yticklabels(["0.10", "0.05", "0", "-0.05", "-0.10"])
+
+
+def set_bottom_y_axis(ax: plt.Axes) -> None:
+	ax.set_ylim(-0.1, 0)
+	ax.set_yticks([0.0,-0.05, -0.1])
+	ax.set_yticklabels(["0", "-0.05", "-0.10"])
+
+
+def add_panel_caption(ax: plt.Axes, caption: str) -> None:
+	ax.text(
+		0.5,
+		-0.42,
+		caption,
+		transform=ax.transAxes,
+		ha="center",
+		va="top",
+		fontsize=8,
+	)
+
+
+def annotate_bottom_values(ax: plt.Axes, diff_table: pd.DataFrame) -> None:
+	traces = diff_table.index.tolist()
+	if len(traces) < 3:
+		return
+
+	bar_width = 0.2
+	annotations = [
+		(0, 0, diff_table.iloc[0]["d100_150"]),
+		(2, 3, diff_table.iloc[2]["d200_150"]),
+	]
+	for trace_idx, series_idx, value in annotations:
+		x_pos = trace_idx + (series_idx - 1.5) * bar_width
+		ax.text(
+			x_pos,
+			-0.04,
+			f"{value:.2f}",
+			transform=ax.get_xaxis_transform(),
+			ha="center",
+			va="top",
+			fontsize=6,
+		)
+
+
+
+def plot_diff(
+	acc_table: pd.DataFrame,
+	k_table: pd.DataFrame,
+	output_path: Path,
+	trace_aliases: dict[str, str],
+) -> None:
+	plt.rcParams["font.family"] = "Times New Roman"
+	plt.rcParams["font.size"] = 9
+	plt.rcParams.update(
+            {
+                "font.family": "Times New Roman",
+                "font.size": 9,
+                "pdf.fonttype": 42,
+                "ps.fonttype": 42,
+                "mathtext.fontset": "custom",
+                "mathtext.rm": "Times New Roman",
+                "mathtext.it": "Times New Roman:italic",
+                "mathtext.bf": "Times New Roman:bold",
+                "axes.unicode_minus": False,
+                "xtick.direction": "out",
+                "ytick.direction": "out",
+				'hatch.linewidth': 0.3
+            }
+        )
+
+	acc_traces = acc_table.index.tolist()
+	k_traces = k_table.index.tolist()
+	fig_height = 2.2
+	fig, axes = plt.subplots(2, 1, figsize=(3.5, fig_height))
+
+	plot_grouped_bars(
+		axes[0],
+		acc_table,
+		[
+			("d55_75", r"$55\%$"),
+			("d65_75", r"$65\%$"),
+			("d85_75", r"$85\%$"),
+			("d95_75", r"$95\%$"),
+		],
+		r"$T_{high}$ (%)",
+		trace_aliases,
+		rotation=0,
+		titlepad=13,
+		colors=["#AA3377", "#D25A70", "#DF7B73", "#EDA87E"]
+	)
+	set_top_y_axis(axes[0])
+	add_panel_caption(axes[0], r"(a) Accuracy Threshold $T_{high}$")
+	set_bottom_y_axis(axes[1])
+	# annotate_outliers(axes[1], k_table, ["d100_150", "d125_150", "d175_150", "d200_150"])
+	plot_grouped_bars(
+		axes[1],
+		k_table,
+		[
+			("d100_150", r"$1.00$"),
+			("d125_150", r"$1.25$"),
+			("d175_150", r"$1.75$"),
+			("d200_150", r"$2.00$"),
+		],
+		r"$\kappa$",
+		trace_aliases,
+		rotation=0,
+		titlepad=13,
+		colors=["#355571",'#5f8ea3','#77A9B6','#B2DAD8']
+	)
+	annotate_bottom_values(axes[1], k_table)
+	add_panel_caption(axes[1], r"(b) Partitioning Parameter $\kappa$")
+
+	fig.subplots_adjust(left=0.18, right=0.99, top=0.98, bottom=0.2, hspace=0.9)
+	fig.savefig(output_path,  dpi=1000, bbox_inches="tight", pad_inches=0.01)
+	plt.close(fig)
 
 
 def main() -> None:
-	plt.rcParams.update(
-		{
-			"font.family": "Times New Roman",
-            "font.size": 9,
-            "pdf.fonttype": 42,
-            "ps.fonttype": 42,
-			"mathtext.fontset": "custom",
-			"mathtext.rm": "Times New Roman",
-			"mathtext.it": "Times New Roman:italic",
-			"mathtext.bf": "Times New Roman:bold",
-			"axes.unicode_minus": False,
-			"xtick.direction": "out",
-			"ytick.direction": "out",
-		}
-	)
-
-
-	font_prop = fm.FontProperties(family="Times New Roman", size=FONT_SIZE_PT)
-
-	acc_df = load_acc_average(ACC_CSV_PATH)
-	k_df = load_k_average(K_CSV_PATH)
-
-	acc_high_y = extract_series(acc_df, "high", ACC_HIGH_VALUES, {"low": 15.0})
-	acc_low_y = extract_series(acc_df, "low", ACC_LOW_VALUES, {"high": 75.0})
-	k_y_values = [float(k_df.set_index("k").loc[value, "IPCI"]) for value in K_VALUES]
-
-	y_min = min(min(acc_high_y), min(acc_low_y), min(k_y_values))
-	y_max = max(max(acc_high_y), max(acc_low_y), max(k_y_values))
-	y_min = 1.06
-	y_max = 1.08
-
-	fig = plt.figure(figsize=FIG_SIZE)
-	gs = fig.add_gridspec(2, 2, width_ratios=[1.08, 1.08], wspace=0.25, hspace=0.50)
-
-	ax_acc_high = fig.add_subplot(gs[0, 0])
-	ax_acc_low = fig.add_subplot(gs[1, 0])
-	ax_k = fig.add_subplot(gs[:, 1])
-	ax_acc_high.set_ylim(1.07,1.08)
-	ax_acc_high.set_yticks([1.07, 1.08])
-	ax_acc_high.set_yticklabels(["1.07", "1.08"])
-	ax_acc_low.set_ylim(1.07,1.08)
-	ax_acc_low.set_yticks([1.07, 1.08])
-	ax_acc_low.set_yticklabels(["1.07", "1.08"])
-	ax_k.set_ylim(1.06,1.08)
-	ax_k.set_yticks([1.06, 1.08])
-	ax_k.set_yticklabels(["1.06", "1.08"])
-
-	plot_line(ax_acc_high, ACC_HIGH_VALUES, acc_high_y, color="#2F8AC4", marker="v")
-	plot_line(ax_acc_low, ACC_LOW_VALUES, acc_low_y, color="#196553", marker="o")
-	plot_line(ax_k, K_VALUES, k_y_values, color="#5D69B1", marker="^")
-
-	for ax in (ax_acc_high, ax_acc_low, ax_k):
-		style_axis(ax)
-		ax.grid(ls="--", alpha=0.35)
 	
+	acc_dir = RESULT_PATH/ "Fig15" / "sens_acc"
+	k_dir = RESULT_PATH/ "Fig15" / "sens_k"
+	trace_aliases = load_trace_aliases(SCRIPTS_PATH / "utils" / "trace_alias.csv")
 
+	acc_data = load_data(acc_dir, TARGET_PREFETCHERS)
+	acc_diff_table = build_diff_table(acc_data)
+	k_data = load_data(k_dir, K_PREFETCHERS)
+	k_diff_table = build_k_diff_table(k_data)
 
-	ax_acc_high.set_xticks(ACC_HIGH_VALUES)
-	ax_acc_high.xaxis.tick_top()
-	ax_acc_high.xaxis.set_label_position("top")
-	ax_acc_high.tick_params(axis="x", top=True, labeltop=True, bottom=False, labelbottom=False, pad=1)
-	ax_acc_high.set_xlabel(r"$T_{high}$ (%)", fontproperties=font_prop, labelpad=4)
-	ax_acc_high.spines["bottom"].set_visible(False)
-	
+	if acc_diff_table.empty:
+		print("No sens_acc trace satisfies: max(IPCI) - min(IPCI) > 0.03")
+		return
+	if k_diff_table.empty:
+		print("No sens_k trace satisfies: max(IPCI) - min(IPCI) > 0.03")
+		return
 
-	ax_acc_low.set_xticks(ACC_LOW_VALUES)
-	ax_acc_low.tick_params(axis="x", top=False, labeltop=False, bottom=True, labelbottom=True, pad=1)
-	ax_acc_low.set_xlabel(r"$T_{low}$ (%)", fontproperties=font_prop, labelpad=0.5)
-	ax_acc_low.spines["top"].set_visible(False)
-	ax_acc_low.set_ylabel("Speedup", fontproperties=font_prop)
-	ax_acc_low.yaxis.set_label_coords(-0.23, 1.2)
-	
+	out_png = FIGURE_PATH / "Fig15-sensitivity-tgp-bmp.pdf"
+	plot_diff(acc_diff_table, k_diff_table, out_png, trace_aliases)
 
-	ax_k.set_xticks(K_VALUES)
-	ax_k.tick_params(axis="x", top=False, labeltop=False, bottom=True, labelbottom=True, pad=1)
-	ax_k.set_xlabel(r"$\kappa$", fontproperties=font_prop, labelpad=0.5)
-	
-	fig.text(0.32, -0.3, "(a) Accuracy Thresholds", ha="center", va="bottom", fontproperties=font_prop)
-	fig.text(0.77, -0.3, "(b) Partitioning Parameters", ha="center", va="bottom", fontproperties=font_prop)
-
-	fig.subplots_adjust(left=0.11, right=0.99, top=0.90, bottom=0.20)
-	OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-	fig.savefig(OUTPUT_PATH, dpi=300, bbox_inches="tight", pad_inches=0.01)
+	print("Selected sens_acc traces (max-min > 0.03):")
+	for trace in acc_diff_table.index:
+		print(trace)
+	print(f"Total selected sens_acc traces: {len(acc_diff_table)}")
+	print("Selected sens_k traces (max-min > 0.03):")
+	for trace in k_diff_table.index:
+		print(trace)
+	print(f"Total selected sens_k traces: {len(k_diff_table)}")
+	print(f"Figure saved to: {out_png}")
 
 
 if __name__ == "__main__":

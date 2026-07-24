@@ -202,19 +202,19 @@ compile_command = {
     "cache1_2.prophet": f"python3 compiler.py -p prophet -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.prophet",
     "cache1_2.prism": f"python3 compiler.py -p prism -c config_cache1_2 -f N_LLC_SET=2048 -e cache1_2.prism",
 
-    "pcq-1": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=1 -e pcq-1",
-    "pcq-2": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=2 -e pcq-2",
-    "pcq-4": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=4 -e pcq-4",
-    "pcq-8": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=8 -e pcq-8",
-    "pcq-12": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=12 -e pcq-12",
-    "pcq-16": f"python3 compiler.py -p pctp -f INF_PAT PCQ_SIZE=16 -e pcq-16",
+    "pcq-1": f"python3 compiler.py -p prism -f INDEPENDENT_PAT INF_PAT PCQ_SIZE=1 -e pcq-1",
+    "pcq-2": f"python3 compiler.py -p prism -f INDEPENDENT_PAT INF_PAT PCQ_SIZE=2 -e pcq-2",
+    "pcq-4": f"python3 compiler.py -p prism -f INDEPENDENT_PAT INF_PAT PCQ_SIZE=4 -e pcq-4",
+    "pcq-8": f"python3 compiler.py -p prism -f INDEPENDENT_PAT INF_PAT PCQ_SIZE=8 -e pcq-8",
+    "pcq-12": f"python3 compiler.py -p prism -f INDEPENDENT_PAT INF_PAT PCQ_SIZE=12 -e pcq-12",
+    "pcq-16": f"python3 compiler.py -p prism -f INDEPENDENT_PAT INF_PAT PCQ_SIZE=16 -e pcq-16",
 
-    "pat-12k": f"python3 compiler.py -p pctp -f PAT_SIZE=12*1024 -e pat-12k",
-    "pat-24k": f"python3 compiler.py -p pctp -f PAT_SIZE=24*1024 -e pat-24k",
-    "pat-48k": f"python3 compiler.py -p pctp -f PAT_SIZE=48*1024 -e pat-48k",
-    "pat-96k": f"python3 compiler.py -p pctp -f PAT_SIZE=96*1024 -e pat-96k",
-    "pat-144k": f"python3 compiler.py -p pctp -f PAT_SIZE=144*1024 -e pat-144k",
-    "pat-192k": f"python3 compiler.py -p pctp -f PAT_SIZE=192*1024 -e pat-192k",
+    "pat-12k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=12*1024 -e pat-12k",
+    "pat-24k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=24*1024 -e pat-24k",
+    "pat-48k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=48*1024 -e pat-48k",
+    "pat-96k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=96*1024 -e pat-96k",
+    "pat-144k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=144*1024 -e pat-144k",
+    "pat-192k": f"python3 compiler.py -p prism -f INDEPENDENT_PAT PAT_SIZE=192*1024 -e pat-192k",
 
     "acc_low15_high55": f"python3 compiler.py -p prism -f T_ACC_LOW=0.15 T_ACC_HIGH=0.55 -e acc_low15_high55",
     "acc_low15_high65": f"python3 compiler.py -p prism -f T_ACC_LOW=0.15 T_ACC_HIGH=0.65 -e acc_low15_high65",
@@ -256,7 +256,7 @@ collect_command = {
     "Fig10": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/Fig10 -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
     "Fig11": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/Fig11 -m IPCI L2C_Accuracy L2C_Timeliness DRAM_Traffic"],
     "Fig12": [f"python3 utils/energy.py"],
-    "Fig13": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/Fig13 -m MT_lookups MT_inserts MT_hits L2C_USEFUL"],
+    "Fig13": [f"python3 get_result.py -p triangel prophet prism -o {RESULT_PATH}/Fig13 -m MT_lookups MT_inserts MT_hits MT_usefuls MT_hits2lookups_rate MT_usefuls2hits_rate"],
     "Fig14": [f"python3 get_result.py -p pcq-1 pcq-2 pcq-4 pcq-8 pcq-12 pcq-16 -o {RESULT_PATH}/Fig14/pcq -m IPCI PCM_accuracy PCM_laterate",
               f"python3 get_result.py -p pcq-8 pat-12k pat-24k pat-48k pat-96k pat-144k pat-192k -o {RESULT_PATH}/Fig14/pat -m IPCI PCM_useful_prefetches"],
     "Fig15": [f"python3 get_result.py -p acc_low15_high55 acc_low15_high65 prism acc_low15_high85 acc_low15_high95 acc_low05_high75 acc_low10_high75 acc_low20_high75 acc_low25_high75 \
@@ -321,7 +321,7 @@ if args.phase == "Compile":
 
 trace_name_set = set()
 
-with open("./utils/tracelist", "r") as f:
+with open(SCRIPTS_PATH/"utils"/"tracelist", "r") as f:
     lines = f.readlines()
 for prefix in run_trace_list[args.figure]:
     for line in lines:
@@ -341,11 +341,10 @@ def check_results(log_path, list_exe, set_trace):
     if args.figure != "Fig17":
         print(log_path, list_exe,set_trace)
         for exe in list_exe:
-            exe_name = exe     # 如果 list_exe 是路径，取文件名；如果本来就是名字也没问题
+            exe_name = exe
             exe_dir = log_path / exe_name
 
             if not exe_dir.exists():
-                # print(f"[Missing Directory] {exe_dir}")
                 for trace in set_trace:
                     failed.append((exe_name, trace, "directory missing"))
                 continue
@@ -373,7 +372,7 @@ def check_results(log_path, list_exe, set_trace):
                     failed.append((exe_name, trace_name, "not completed"))
     else:
         for exe in list_exe:
-            exe_name = exe     # 如果 list_exe 是路径，取文件名；如果本来就是名字也没问题
+            exe_name = exe
             exe_dir = log_path / f"core8" / exe_name
             if not exe_dir.exists():
                 # print(f"[Missing Directory] {exe_dir}")
@@ -402,8 +401,6 @@ def check_results(log_path, list_exe, set_trace):
                         success.append((exe_name, trace_name))
                     else:
                         failed.append((exe_name, trace_name, "not completed"))
-
-
 
     return success, failed
 

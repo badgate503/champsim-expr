@@ -8,10 +8,12 @@ int inftable::issue_metatable(std::unordered_map<uint64_t, inftableMetaTableEntr
   int issued = 0;
   for (int i = 0; i < globalDegree; i++) {
     auto candidate = metaTable.find(lookup);
-    meta_table_lookups++;
+    /* Energy */
+    markov_read++;
+    MT_lookups++;
     if (candidate == metaTable.end())
       break;
-    meta_table_hits++;
+    MT_hits++;
     if (candidate->second.correlated_addr != 0) {
       if (!isAlreadyInQueue(addresses, candidate->second.correlated_addr)) {
         addresses.push_back(candidate->second.correlated_addr);
@@ -97,6 +99,10 @@ uint32_t inftable::prefetcher_cache_operate(champsim::address addr, champsim::ad
     meta_table_accurate_prefetches++;
   }
 
+  if(!warmup_reset && !llc_cache->warmup){
+    reset_stat_counters();
+  }
+
   uint64_t pc = ip.to<uint64_t>();
   uint64_t block_addr = addr.to<uint64_t>() >> LOG2_BLOCK_SIZE;
   vector<uint64_t> pref_addr;
@@ -108,12 +114,19 @@ uint32_t inftable::prefetcher_cache_operate(champsim::address addr, champsim::ad
   // 1.search
   uint64_t last_addr = 0;
   auto pc_entry = pcTable.find(pc);
+  /* Energy */
+  training_unit_read++;
   if (pc_entry != pcTable.end()) {
     last_addr = pc_entry->second.front();
+    /* Energy */
+    training_unit_write++;
   } else {
     std::deque<uint64_t> temp(1, 0);
     pcTable[pc] = temp;
+
     pc_entry = pcTable.find(pc);
+    /* Energy */
+    training_unit_write++;
   }
   // pcTable->set_mru(pc);
 
@@ -143,24 +156,19 @@ uint32_t inftable::prefetcher_cache_operate(champsim::address addr, champsim::ad
       } else {
         uint64_t victim_addr = last_meta->second.correlated_addr;
         inftableMetaTableEntry temp_entry(block_addr);
-#ifdef NOMD_WHEN_HIT
-        if (!cache_hit)
-          metaTable->insert(insert_key, temp_entry, 1);
-#else
         metaTable[insert_key] = temp_entry;
-#endif
+        /* Energy */
+        markov_write++;
+        MT_inserts++;
       }
     } else {
       inftableMetaTableEntry temp_entry(block_addr);
-#ifdef NOMD_WHEN_HIT
-      if (!cache_hit)
-        if (!metaTable->insert(insert_key, temp_entry, 1))
-          numEntriesinTable++;
-#else
       metaTable[insert_key] = temp_entry;
-    numEntriesinTable++;
-      
-#endif
+      numEntriesinTable++;
+
+      /* Energy */
+      markov_write++;
+      MT_inserts++;
     }
   }
 
@@ -196,9 +204,11 @@ void inftable::prefetcher_final_stats()
 #ifdef MISS_CLASS_LOG
   logfile.close();
 #endif
-  cout << "MT_lookups " << meta_table_lookups << endl;
-  cout << "MT_hits " << meta_table_hits << endl;
-  cout << "MT_hitrate " << (meta_table_lookups ? (double)meta_table_hits / meta_table_lookups : 0) << endl;
+  cout << "MT_lookups " << MT_lookups << endl;
+  cout << "MT_hits " << MT_hits << endl;
+  cout << "MT_inserts " << MT_inserts << endl;
+
+  cout << "MT_hitrate " << (MT_lookups ? (double)MT_hits / MT_lookups : 0) << endl;
   cout << "MT_issuedpf " << meta_table_issued_prefetches << endl;
   cout << "MT_accuratepf " << meta_table_accurate_prefetches << endl;
   cout << "MT_accuracy " << (meta_table_issued_prefetches ? (double)meta_table_accurate_prefetches / meta_table_issued_prefetches : 0) << endl;

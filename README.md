@@ -221,7 +221,7 @@ PRISM/
 ├── test/                   # Unit tests
 ├── trace/                  # Trace files (user must download separately)
 ├── Makefile                # Build configuration
-└── setup.sh                # Environment setup script
+└── install.sh              # Environment setup script
 ```
 
 ## Citation
@@ -239,7 +239,14 @@ PRISM was accepted by MICRO 2026. If you find this repository useful, please cit
 
 ## License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+This project is based on ChampSim.
+
+Original ChampSim source:
+https://github.com/ChampSim/ChampSim
+
+ChampSim is licensed under Apache License 2.0.
+
+This repository contains additional modifications developed by Yiquan Lin and Jianxiang Liu.
 
 ## Contact
 

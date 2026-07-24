@@ -57,7 +57,7 @@ if args.traces is not None:
     trace_name_set.update(args.traces)
 multicore_trace_map = dict()
 if args.tracelist is not None and len(args.tracelist) > 0:
-    with open("./utils/tracelist", "r") as f:
+    with open(SCRIPTS_PATH/"utils"/"tracelist", "r") as f:
         lines = f.readlines()
     for prefix in args.tracelist:
         for line in lines:
@@ -87,7 +87,7 @@ if args.ncore == 1:
 else:
     print(f"ncore = {args.ncore}")
     trace_mix_set = set()
-    with open(f"./utils/sample_{args.ncore}core.csv", "r") as f:
+    with open(SCRIPTS_PATH / "utils" / f"sample_{args.ncore}core.csv", "r") as f:
         lines = f.readlines()
         for line in lines:
             parts = line.strip().split(",")

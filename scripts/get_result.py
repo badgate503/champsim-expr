@@ -47,10 +47,9 @@ METRICS = [
     # 'L2C_DemandHit',
     # 'L2C_UselessPF',
     # 'L2C_Demand_miss',
-    'L2C_USEFUL',
     'L2C_Relative_Useful', # relative to baseline
     'L2C_UsefulPF',
-    "LLC_DemandHit",
+    'LLC_DemandHit',
     'DRAM_Traffic',
     # 'L1D_average_miss_latency',
     # 'L2C_average_miss_latency',
@@ -66,8 +65,9 @@ METRICS = [
     'MT_inserts',
     'MT_lookups',
     'MT_hits',
-    'MT_hitrate',
-    'MT_accuracy',
+    'MT_usefuls', # l2 useful prefetches, normalized to baseline LLC traffic
+    'MT_hits2lookups_rate',
+    'MT_usefuls2hits_rate',
     'MT_accuratepf',
     'LLC_Traffic',
     'MT_acc_find_rate',
@@ -206,7 +206,7 @@ def get_measure(path, baseline_result = None):
         counters['L2C_UsefulPF'] = f"{data_l2pf['USEFUL'] / (data_l2pf['ISSUED']) if data_l2pf['ISSUED'] > 0 else 0.0} "
         # counters['L2C_UselessPF'] = f"{data_l2pf['USELESS'] / (data_l2pf['ISSUED']) if data_l2pf['ISSUED'] > 0 else 0.0} "
         counters['LLC_DemandHit'] = f"{load_llc['HIT'] / load_llc['ACCESS']}"
-        counters['L2C_USEFUL'] = f"{data_l2pf['USEFUL']}"
+        counters['MT_usefuls'] = f"{data_l2pf['USEFUL']}"
         if (int(counters['MT_lookups']) > 0):
             counters['MT_acc_find_rate'] = f"{float(counters['MT_accuratepf']) / float(counters['MT_lookups'])}"
 
@@ -214,7 +214,9 @@ def get_measure(path, baseline_result = None):
             counters['MT_inserts'] = f"{int(counters['MT_inserts']) / int(baseline_result['LLC_Traffic']) if int(baseline_result['LLC_Traffic']) > 0 else 0.0}"
             counters['MT_lookups'] = f"{int(counters['MT_lookups']) / int(baseline_result['LLC_Traffic']) if int(baseline_result['LLC_Traffic']) > 0 else 0.0}"
             counters['MT_hits'] = f"{int(counters['MT_hits']) / int(baseline_result['LLC_Traffic']) if int(baseline_result['LLC_Traffic']) > 0 else 0.0}"
-            counters['L2C_USEFUL'] = f"{int(counters['L2C_USEFUL']) / int(baseline_result['LLC_Traffic']) if int(baseline_result['LLC_Traffic']) > 0 else 0.0}"
+            counters['MT_usefuls'] = f"{int(counters['MT_usefuls']) / int(baseline_result['LLC_Traffic']) if int(baseline_result['LLC_Traffic']) > 0 else 0.0}"
+
+            
         else:
             counters['LLC_Traffic'] = f"{int(total_llc['ACCESS']) - int(trans_llc['ACCESS']) + int(counters['MT_lookups']) + int(counters['MT_inserts'])}"
         if baseline_result is not None:
@@ -226,7 +228,8 @@ def get_measure(path, baseline_result = None):
                 counters['L2C_Coverage'] = f"{0.0}"
         else:
             counters['L2C_Coverage'] = f"{0.0}"
-
+        counters['MT_hits2lookups_rate'] = f"{float(counters['MT_hits']) / float(counters['MT_lookups']) if float(counters['MT_lookups']) > 0 else 0.0}"
+        counters['MT_usefuls2hits_rate'] = f"{float(counters['MT_usefuls']) / float(counters['MT_hits']) if float(counters['MT_hits']) > 0 else 0.0}"
         # if baseline_result is not None:
         #     if int(baseline_result['PCM_useful_prefetches']) > 0:
         #         counters['PCM_useful_coverage'] = f"{(int(counters['PCM_useful_prefetches']) / int(baseline_result['PCM_useful_prefetches'])) if int(baseline_result['PCM_useful_prefetches']) > 0 else 0.0}"
@@ -267,7 +270,7 @@ def get_measure(path, baseline_result = None):
 if __name__ == "__main__":
 
 
-    with open("utils/tracelist", "r") as f:
+    with open(SCRIPTS_PATH/"utils"/"tracelist", "r") as f:
         for line in f:
             if (line.split(":")[0] == "gap" or line.split(":")[0] == "ligra" or line.split(":")[0] == "ml" or line.split(":")[0] == "google" or line.split(":")[0] == "spec17"):
                 TRACE_LIST[line.split(":")[0]] =  sorted(line.split(":")[1].strip().split(" "))

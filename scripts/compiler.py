@@ -27,7 +27,7 @@ parser.add_argument("--config", "-c", help="Specify the champsim config file, e.
 parser.add_argument("--prefetcher", "-p" , required=True, help="Specify the prefetcher to use in L2 Cache, must be implemented in PRISM/prefetcher")
 parser.add_argument("--exename", "-e", help="Specify the name of the compiled executable file, default to the prefetcher name")
 parser.add_argument("--ncore", "-n", help="Specify the numcore of the simulator", default="1")
-parser.add_argument("--flag","-f", nargs="*", help="Extra compile flags")
+parser.add_argument("--flag","-f", nargs="*", help="Specify additional compilation flags (,i.e., -D[flag])")
 args = parser.parse_args()
 
 extra_cflags=[]
